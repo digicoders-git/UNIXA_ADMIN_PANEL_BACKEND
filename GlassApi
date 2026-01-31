@@ -1,0 +1,1063 @@
+{
+	"info": {
+		"_postman_id": "a15338ad-2551-4a8b-82fd-4835d3e3b9ee",
+		"name": "GlasseCommerce Full API (With Edit/Delete)",
+		"description": "Admin + Product + Category + Offer + Order + Enquiry + Slider APIs",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "38776827",
+		"_collection_link": "https://gaurav-6930.postman.co/workspace/Auction_Here~373c7274-6ced-4fde-af5f-d5fb19c05ab1/collection/38776827-a15338ad-2551-4a8b-82fd-4835d3e3b9ee?action=share&source=collection_link&creator=38776827"
+	},
+	"item": [
+		{
+			"name": "Admin",
+			"item": [
+				{
+					"name": "Admin Create",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"adminId\": \"{{adminId}}\",\n  \"password\": \"{{adminPassword}}\",\n  \"name\": \"Super Admin\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"create"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Admin Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"adminId\": \"{{adminId}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Category",
+			"item": [
+				{
+					"name": "Create Category (Admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OTIzOGRlZmI3NmQwNWMxZWY5OWE0MzciLCJhZG1pbklkIjoic3VwZXJhZG1pbiIsInR2IjowLCJpYXQiOjE3NjM5NzE2MjEsImV4cCI6MTc2NDAxNDgyMX0.FcQUjM_DmCueekt3_dN_TQVkJ821oJMDML1QRBjXA0U",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"LED Mirrors\",\n  \"description\": \"All LED based mirrors\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/categories",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"categories"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Categories (Public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/categories",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"categories"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Single Category (Public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/categories/{{categoryIdOrSlug}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"categories",
+								"{{categoryIdOrSlug}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Category (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Category Name\",\n  \"description\": \"Updated description\",\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/categories/{{categoryIdOrSlug}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"categories",
+								"{{categoryIdOrSlug}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Category (Admin)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/categories/{{categoryIdOrSlug}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"categories",
+								"{{categoryIdOrSlug}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Products",
+			"item": [
+				{
+					"name": "Create Product (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "Single Door Cabinet",
+									"type": "text"
+								},
+								{
+									"key": "price",
+									"value": "13395",
+									"type": "text"
+								},
+								{
+									"key": "discountPercent",
+									"value": "5",
+									"type": "text"
+								},
+								{
+									"key": "categoryId",
+									"value": "{{categoryId}}",
+									"type": "text"
+								},
+								{
+									"key": "sizes",
+									"value": "[\"18x24\",\"24x24\"]",
+									"type": "text"
+								},
+								{
+									"key": "colors",
+									"value": "[\"White\",\"Warm White\"]",
+									"type": "text"
+								},
+								{
+									"key": "addOns",
+									"value": "[{\"name\":\"None\",\"price\":0,\"isDefault\":true},{\"name\":\"UV Light\",\"price\":499}]",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "Premium LED mirror cabinet",
+									"type": "text"
+								},
+								{
+									"key": "about",
+									"value": "Shatter-proof, energy efficient",
+									"type": "text"
+								},
+								{
+									"key": "mainImage",
+									"value": "",
+									"type": "file"
+								},
+								{
+									"key": "galleryImages",
+									"value": "",
+									"type": "file"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/products",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"products"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Products (Public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/products",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"products"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Single Product (Public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/products/{{productIdOrSlug}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"products",
+								"{{productIdOrSlug}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product (Admin, with optional images)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "Updated Cabinet Name",
+									"type": "text"
+								},
+								{
+									"key": "price",
+									"value": "15000",
+									"type": "text"
+								},
+								{
+									"key": "discountPercent",
+									"value": "10",
+									"type": "text"
+								},
+								{
+									"key": "categoryId",
+									"value": "{{categoryId}}",
+									"type": "text"
+								},
+								{
+									"key": "sizes",
+									"value": "[\"24x24\",\"30x30\"]",
+									"type": "text"
+								},
+								{
+									"key": "colors",
+									"value": "[\"White\",\"Warm White\"]",
+									"type": "text"
+								},
+								{
+									"key": "addOns",
+									"value": "[{\"name\":\"None\",\"price\":0,\"isDefault\":true},{\"name\":\"Bluetooth\",\"price\":999}]",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "Updated description here",
+									"type": "text"
+								},
+								{
+									"key": "isActive",
+									"value": "true",
+									"type": "text"
+								},
+								{
+									"key": "mainImage",
+									"value": "",
+									"type": "file"
+								},
+								{
+									"key": "galleryImages",
+									"value": "",
+									"type": "file"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/products/{{productIdOrSlug}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"products",
+								"{{productIdOrSlug}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Product (Admin)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/products/{{productIdOrSlug}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"products",
+								"{{productIdOrSlug}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Offers",
+			"item": [
+				{
+					"name": "Create Offer (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"WELCOME10\",\n  \"title\": \"Flat 10% Off\",\n  \"discountType\": \"percentage\",\n  \"discountValue\": 10,\n  \"minOrderAmount\": 1000,\n  \"maxDiscountAmount\": 500\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/offers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"offers"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Offers (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/offers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"offers"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Offer by Code (Public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/offers/code/{{offerCode}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"offers",
+								"code",
+								"{{offerCode}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Offer (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Updated Flat 15% Off\",\n  \"discountValue\": 15,\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/offers/{{offerId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"offers",
+								"{{offerId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Offer (Admin)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/offers/{{offerId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"offers",
+								"{{offerId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Orders",
+			"item": [
+				{
+					"name": "Place Order (Public)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"USR-123\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 2,\n      \"size\": \"24x24\",\n      \"color\": \"Warm White\"\n    }\n  ],\n  \"offerCode\": \"WELCOME10\",\n  \"paymentMethod\": \"COD\",\n  \"shippingAddress\": {\n    \"name\": \"John Doe\",\n    \"phone\": \"9999999999\",\n    \"addressLine1\": \"House No 1\",\n    \"city\": \"Delhi\",\n    \"state\": \"Delhi\",\n    \"pincode\": \"110001\"\n  },\n  \"notes\": \"Please deliver in evening\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/orders",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"orders"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Admin List Orders",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/orders",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"orders"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Admin Get Single Order",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/orders/{{orderId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"orders",
+								"{{orderId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Admin Update Order Status",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"shipped\",\n  \"paymentStatus\": \"paid\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/orders/{{orderId}}/status",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"orders",
+								"{{orderId}}",
+								"status"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Enquiry",
+			"item": [
+				{
+					"name": "Submit Enquiry (Public)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Site Visitor\",\n  \"email\": \"test@example.com\",\n  \"phone\": \"9999999999\",\n  \"subject\": \"Product Query\",\n  \"message\": \"Please call me regarding this product.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/enquiry",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"enquiry"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Admin List Enquiries",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/enquiry",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"enquiry"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Admin Get Single Enquiry",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/enquiry/{{enquiryId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"enquiry",
+								"{{enquiryId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Admin Update Enquiry Status / Read",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"in-progress\",\n  \"isRead\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/enquiry/{{enquiryId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"enquiry",
+								"{{enquiryId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Sliders",
+			"item": [
+				{
+					"name": "Create Slider (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "title",
+									"value": "Big Sale Banner",
+									"type": "text"
+								},
+								{
+									"key": "subtitle",
+									"value": "Up to 50% Off",
+									"type": "text"
+								},
+								{
+									"key": "buttonText",
+									"value": "Shop Now",
+									"type": "text"
+								},
+								{
+									"key": "linkUrl",
+									"value": "/sale",
+									"type": "text"
+								},
+								{
+									"key": "sortOrder",
+									"value": "1",
+									"type": "text"
+								},
+								{
+									"key": "image",
+									"value": "",
+									"type": "file"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/sliders",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"sliders"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Active Sliders (Public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/sliders",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"sliders"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Admin List All Sliders",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/sliders/all",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"sliders",
+								"all"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Slider (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "title",
+									"value": "Updated Sale Banner",
+									"type": "text"
+								},
+								{
+									"key": "subtitle",
+									"value": "Now up to 60% off",
+									"type": "text"
+								},
+								{
+									"key": "buttonText",
+									"value": "Explore",
+									"type": "text"
+								},
+								{
+									"key": "linkUrl",
+									"value": "/mega-sale",
+									"type": "text"
+								},
+								{
+									"key": "sortOrder",
+									"value": "2",
+									"type": "text"
+								},
+								{
+									"key": "isActive",
+									"value": "true",
+									"type": "text"
+								},
+								{
+									"key": "image",
+									"value": "",
+									"type": "file"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/sliders/{{sliderId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"sliders",
+								"{{sliderId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Slider (Admin)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/sliders/{{sliderId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"sliders",
+								"{{sliderId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Dashboard",
+			"item": [
+				{
+					"name": "Dashboard Overview",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://glassadminpanelapi.onrender.com"
+		},
+		{
+			"key": "adminId",
+			"value": "superadmin"
+		},
+		{
+			"key": "adminPassword",
+			"value": "Admin@123"
+		},
+		{
+			"key": "adminToken",
+			"value": ""
+		},
+		{
+			"key": "categoryId",
+			"value": ""
+		},
+		{
+			"key": "categoryIdOrSlug",
+			"value": ""
+		},
+		{
+			"key": "productId",
+			"value": ""
+		},
+		{
+			"key": "productIdOrSlug",
+			"value": ""
+		},
+		{
+			"key": "offerId",
+			"value": ""
+		},
+		{
+			"key": "offerCode",
+			"value": "WELCOME10"
+		},
+		{
+			"key": "orderId",
+			"value": ""
+		},
+		{
+			"key": "enquiryId",
+			"value": ""
+		},
+		{
+			"key": "sliderId",
+			"value": ""
+		}
+	]
+}

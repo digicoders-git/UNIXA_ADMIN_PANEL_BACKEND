@@ -1,0 +1,685 @@
+{
+  "info": {
+    "name": "Glass E-commerce API",
+    "description": "Complete E-commerce API for Glass Admin Panel with User Management, Shopping Cart, Wishlist, Orders, and Admin Panel",
+    "version": "1.0.0",
+    "baseUrl": "http://localhost:5000/api"
+  },
+  "authentication": {
+    "type": "Bearer Token",
+    "header": "Authorization: Bearer <token>",
+    "note": "Required for all protected routes"
+  },
+  "endpoints": {
+    "userAuthentication": {
+      "register": {
+        "method": "POST",
+        "url": "/users/register",
+        "description": "Register new user with enhanced profile",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "requestBody": {
+          "firstName": "John",
+          "lastName": "Doe", 
+          "email": "john.doe@example.com",
+          "phone": "9876543210",
+          "password": "password123",
+          "dateOfBirth": "1990-01-15",
+          "gender": "male"
+        },
+        "response": {
+          "success": {
+            "status": 201,
+            "body": {
+              "message": "Registration successful",
+              "user": {
+                "id": "user_id",
+                "firstName": "John",
+                "lastName": "Doe",
+                "email": "john.doe@example.com",
+                "phone": "9876543210",
+                "dateOfBirth": "1990-01-15T00:00:00.000Z",
+                "gender": "male"
+              },
+              "token": "jwt_token_here"
+            }
+          },
+          "error": {
+            "status": 409,
+            "body": {
+              "message": "User already exists with this email"
+            }
+          }
+        }
+      },
+      "login": {
+        "method": "POST",
+        "url": "/users/login",
+        "description": "User login with email and password",
+        "requestBody": {
+          "email": "john.doe@example.com",
+          "password": "password123"
+        },
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "message": "Login successful",
+              "user": {
+                "id": "user_id",
+                "firstName": "John",
+                "lastName": "Doe",
+                "email": "john.doe@example.com",
+                "phone": "9876543210",
+                "lastLogin": "2024-01-15T10:30:00.000Z"
+              },
+              "token": "jwt_token_here"
+            }
+          }
+        }
+      },
+      "getProfile": {
+        "method": "GET",
+        "url": "/users/profile",
+        "description": "Get user profile information",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        },
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "user": {
+                "id": "user_id",
+                "firstName": "John",
+                "lastName": "Doe",
+                "email": "john.doe@example.com",
+                "phone": "9876543210",
+                "dateOfBirth": "1990-01-15T00:00:00.000Z",
+                "gender": "male",
+                "preferences": {
+                  "newsletter": true,
+                  "smsUpdates": true,
+                  "language": "en"
+                },
+                "addresses": []
+              }
+            }
+          }
+        }
+      },
+      "updateProfile": {
+        "method": "PUT",
+        "url": "/users/profile",
+        "description": "Update user profile",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        },
+        "requestBody": {
+          "firstName": "John Updated",
+          "lastName": "Doe Updated",
+          "phone": "9876543211",
+          "dateOfBirth": "1990-01-15",
+          "gender": "male",
+          "preferences": {
+            "newsletter": false,
+            "smsUpdates": true
+          }
+        }
+      }
+    },
+    "addressManagement": {
+      "getAddresses": {
+        "method": "GET",
+        "url": "/users/addresses",
+        "description": "Get all user addresses",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        },
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "addresses": [
+                {
+                  "_id": "address_id_1",
+                  "name": "John Doe",
+                  "phone": "9876543210",
+                  "addressLine1": "123 Main Street",
+                  "addressLine2": "Near City Mall",
+                  "city": "Mumbai",
+                  "state": "Maharashtra",
+                  "pincode": "400001",
+                  "addressType": "home",
+                  "isDefault": true
+                },
+                {
+                  "_id": "address_id_2",
+                  "name": "John Doe Office",
+                  "phone": "9876543210",
+                  "addressLine1": "456 Business Park",
+                  "city": "Mumbai",
+                  "state": "Maharashtra",
+                  "pincode": "400002",
+                  "addressType": "office",
+                  "isDefault": false
+                }
+              ]
+            }
+          }
+        }
+      },
+      "addAddress": {
+        "method": "POST",
+        "url": "/users/addresses",
+        "description": "Add new delivery address",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        },
+        "requestBody": {
+          "name": "John Doe",
+          "phone": "9876543210",
+          "addressLine1": "123 Main Street",
+          "addressLine2": "Near City Mall",
+          "city": "Mumbai",
+          "state": "Maharashtra",
+          "pincode": "400001",
+          "addressType": "home",
+          "isDefault": true
+        },
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "message": "Address added",
+              "addresses": []
+            }
+          }
+        }
+      },
+      "updateAddress": {
+        "method": "PUT",
+        "url": "/users/addresses/:addressId",
+        "description": "Update existing address"
+      },
+      "deleteAddress": {
+        "method": "DELETE",
+        "url": "/users/addresses/:addressId",
+        "description": "Delete address"
+      }
+    },
+    "shoppingCart": {
+      "getCart": {
+        "method": "GET",
+        "url": "/cart",
+        "description": "Get user's shopping cart",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        },
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "cart": {
+                "user": "user_id",
+                "items": [
+                  {
+                    "product": {
+                      "id": "product_id",
+                      "name": "Sunglasses",
+                      "finalPrice": 2500
+                    },
+                    "quantity": 2,
+                    "size": "Medium",
+                    "color": "Black",
+                    "addOnName": "Anti-glare coating",
+                    "addOnPrice": 500
+                  }
+                ],
+                "totalItems": 2,
+                "totalAmount": 6000
+              }
+            }
+          }
+        }
+      },
+      "addToCart": {
+        "method": "POST",
+        "url": "/cart/add",
+        "description": "Add product to cart",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        },
+        "requestBody": {
+          "productId": "product_id_here",
+          "quantity": 2,
+          "size": "Medium",
+          "color": "Black",
+          "addOnName": "Anti-glare coating",
+          "addOnPrice": 500
+        }
+      },
+      "updateCartItem": {
+        "method": "PUT",
+        "url": "/cart/item/:itemId",
+        "description": "Update cart item quantity",
+        "requestBody": {
+          "quantity": 3
+        }
+      },
+      "removeFromCart": {
+        "method": "DELETE",
+        "url": "/cart/item/:itemId",
+        "description": "Remove item from cart"
+      },
+      "clearCart": {
+        "method": "DELETE",
+        "url": "/cart/clear",
+        "description": "Clear entire cart"
+      }
+    },
+    "wishlist": {
+      "getWishlist": {
+        "method": "GET",
+        "url": "/wishlist",
+        "description": "Get user's wishlist",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        },
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "wishlist": {
+                "user": "user_id",
+                "products": [
+                  {
+                    "id": "product_id",
+                    "name": "Designer Glasses",
+                    "price": 3500,
+                    "finalPrice": 3150,
+                    "mainImage": {
+                      "url": "image_url"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "addToWishlist": {
+        "method": "POST",
+        "url": "/wishlist/add",
+        "description": "Add product to wishlist",
+        "requestBody": {
+          "productId": "product_id_here"
+        }
+      },
+      "toggleWishlist": {
+        "method": "POST",
+        "url": "/wishlist/toggle",
+        "description": "Smart add/remove from wishlist",
+        "requestBody": {
+          "productId": "product_id_here"
+        },
+        "response": {
+          "success": {
+            "body": {
+              "message": "Product added to wishlist",
+              "action": "added",
+              "wishlist": {}
+            }
+          }
+        }
+      },
+      "removeFromWishlist": {
+        "method": "DELETE",
+        "url": "/wishlist/:productId",
+        "description": "Remove product from wishlist"
+      }
+    },
+    "userOrders": {
+      "placeOrder": {
+        "method": "POST",
+        "url": "/user-orders/place",
+        "description": "Place order from cart",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        },
+        "requestBody": {
+          "addressId": "address_id_here",
+          "paymentMethod": "COD",
+          "offerCode": "SAVE10",
+          "notes": "Please handle with care"
+        },
+        "response": {
+          "success": {
+            "status": 201,
+            "body": {
+              "message": "Order placed successfully",
+              "order": {
+                "id": "order_id",
+                "userId": "user_id",
+                "items": [],
+                "subtotal": 5000,
+                "discount": 500,
+                "total": 4500,
+                "status": "pending",
+                "paymentStatus": "pending"
+              },
+              "orderId": "order_id"
+            }
+          }
+        }
+      },
+      "getUserOrders": {
+        "method": "GET",
+        "url": "/user-orders",
+        "description": "Get user's order history",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        },
+        "queryParams": {
+          "page": "1",
+          "limit": "10",
+          "status": "pending"
+        },
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "orders": [],
+              "pagination": {
+                "page": 1,
+                "limit": 10,
+                "total": 25,
+                "pages": 3
+              }
+            }
+          }
+        }
+      },
+      "getOrder": {
+        "method": "GET",
+        "url": "/user-orders/:orderId",
+        "description": "Get single order details"
+      },
+      "cancelOrder": {
+        "method": "PUT",
+        "url": "/user-orders/:orderId/cancel",
+        "description": "Cancel pending order"
+      },
+      "trackOrder": {
+        "method": "GET",
+        "url": "/user-orders/:orderId/track",
+        "description": "Track order status",
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "orderId": "order_id",
+              "currentStatus": "shipped",
+              "paymentStatus": "paid",
+              "tracking": {
+                "step": 3,
+                "message": "Order shipped"
+              },
+              "orderDate": "2024-01-15T10:30:00.000Z",
+              "lastUpdate": "2024-01-16T14:20:00.000Z"
+            }
+          }
+        }
+      }
+    },
+    "products": {
+      "listProducts": {
+        "method": "GET",
+        "url": "/products",
+        "description": "Get all active products (Public)",
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "products": [
+                {
+                  "id": "product_id",
+                  "name": "Designer Sunglasses",
+                  "slug": "designer-sunglasses-123456",
+                  "category": {
+                    "name": "Sunglasses",
+                    "slug": "sunglasses"
+                  },
+                  "price": 3500,
+                  "discountPercent": 10,
+                  "finalPrice": 3150,
+                  "mainImage": {
+                    "url": "image_url",
+                    "publicId": "cloudinary_id"
+                  },
+                  "sizes": ["Small", "Medium", "Large"],
+                  "colors": ["Black", "Brown", "Blue"],
+                  "addOns": [
+                    {
+                      "name": "None",
+                      "price": 0,
+                      "isDefault": true
+                    },
+                    {
+                      "name": "Anti-glare coating",
+                      "price": 500,
+                      "isDefault": false
+                    }
+                  ],
+                  "isActive": true
+                }
+              ]
+            }
+          }
+        }
+      },
+      "getProduct": {
+        "method": "GET",
+        "url": "/products/:idOrSlug",
+        "description": "Get single product by ID or slug (Public)"
+      }
+    },
+    "categories": {
+      "listCategories": {
+        "method": "GET",
+        "url": "/categories",
+        "description": "Get all active categories (Public)"
+      },
+      "getCategory": {
+        "method": "GET",
+        "url": "/categories/:idOrSlug",
+        "description": "Get single category (Public)"
+      }
+    },
+    "offers": {
+      "listOffers": {
+        "method": "GET",
+        "url": "/offers",
+        "description": "Get all active offers (Public)"
+      },
+      "validateOffer": {
+        "method": "GET",
+        "url": "/offers/:code/validate",
+        "description": "Validate offer code (Public)"
+      }
+    },
+    "adminAuthentication": {
+      "createAdmin": {
+        "method": "POST",
+        "url": "/admin/create",
+        "description": "Create new admin",
+        "requestBody": {
+          "adminId": "admin123",
+          "password": "adminpass123",
+          "name": "Admin Name"
+        }
+      },
+      "loginAdmin": {
+        "method": "POST",
+        "url": "/admin/login",
+        "description": "Admin login",
+        "requestBody": {
+          "adminId": "admin123",
+          "password": "adminpass123"
+        }
+      },
+      "listAdmins": {
+        "method": "GET",
+        "url": "/admin/list",
+        "description": "List all admins (Protected)",
+        "headers": {
+          "Authorization": "Bearer <admin_token>"
+        }
+      },
+      "changePassword": {
+        "method": "POST",
+        "url": "/admin/change-password",
+        "description": "Change admin password (Protected)"
+      }
+    },
+    "adminProductManagement": {
+      "createProduct": {
+        "method": "POST",
+        "url": "/products",
+        "description": "Create new product (Admin only)",
+        "headers": {
+          "Authorization": "Bearer <admin_token>",
+          "Content-Type": "multipart/form-data"
+        },
+        "requestBody": {
+          "name": "New Sunglasses",
+          "price": 3500,
+          "discountPercent": 10,
+          "categoryId": "category_id",
+          "sizes": "[\"Small\", \"Medium\", \"Large\"]",
+          "colors": "[\"Black\", \"Brown\"]",
+          "addOns": "[{\"name\":\"Anti-glare\",\"price\":500}]",
+          "description": "Premium sunglasses",
+          "about": "Detailed product information",
+          "mainImage": "file",
+          "galleryImages": "files"
+        }
+      },
+      "updateProduct": {
+        "method": "PUT",
+        "url": "/products/:idOrSlug",
+        "description": "Update product (Admin only)"
+      },
+      "deleteProduct": {
+        "method": "DELETE",
+        "url": "/products/:idOrSlug",
+        "description": "Delete product (Admin only)"
+      }
+    },
+    "adminOrderManagement": {
+      "getAllOrders": {
+        "method": "GET",
+        "url": "/orders",
+        "description": "Get all orders (Admin only)",
+        "headers": {
+          "Authorization": "Bearer <admin_token>"
+        }
+      },
+      "getOrderById": {
+        "method": "GET",
+        "url": "/orders/:orderId",
+        "description": "Get order by ID (Admin only)"
+      },
+      "updateOrderStatus": {
+        "method": "PUT",
+        "url": "/orders/:orderId",
+        "description": "Update order status (Admin only)",
+        "requestBody": {
+          "status": "confirmed",
+          "paymentStatus": "paid"
+        }
+      }
+    },
+    "dashboard": {
+      "getDashboardStats": {
+        "method": "GET",
+        "url": "/dashboard",
+        "description": "Get dashboard analytics (Admin only)",
+        "headers": {
+          "Authorization": "Bearer <admin_token>"
+        },
+        "response": {
+          "success": {
+            "status": 200,
+            "body": {
+              "summaryCards": {
+                "totalRevenue": 150000,
+                "totalOrders": 45,
+                "avgOrderValue": 3333,
+                "monthRevenue": 25000,
+                "totalProducts": 120,
+                "activeProducts": 115,
+                "totalCategories": 8,
+                "activeCategories": 7,
+                "totalEnquiries": 15,
+                "unreadEnquiries": 3,
+                "activeOffers": 2,
+                "todayOrders": 5
+              },
+              "charts": {
+                "salesLast7Days": [],
+                "ordersByStatus": [],
+                "ordersByPaymentMethod": [],
+                "productsByCategory": []
+              },
+              "tables": {
+                "latestOrders": [],
+                "latestProducts": [],
+                "recentEnquiries": [],
+                "activeOffers": []
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "errorCodes": {
+    "400": "Bad Request - Invalid input data",
+    "401": "Unauthorized - Invalid or missing token",
+    "403": "Forbidden - Insufficient permissions",
+    "404": "Not Found - Resource not found",
+    "409": "Conflict - Resource already exists",
+    "500": "Internal Server Error - Server error"
+  },
+  "statusCodes": {
+    "orderStatus": ["pending", "confirmed", "shipped", "delivered", "cancelled"],
+    "paymentStatus": ["pending", "paid", "failed"],
+    "paymentMethods": ["COD", "ONLINE"],
+    "addressTypes": ["home", "office", "other"],
+    "genderOptions": ["male", "female", "other"],
+    "enquiryStatus": ["new", "in-progress", "resolved"]
+  },
+  "sampleWorkflow": {
+    "userRegistrationToOrder": [
+      "1. POST /users/register - Register new user",
+      "2. POST /users/login - Login user",
+      "3. GET /products - Browse products",
+      "4. POST /cart/add - Add products to cart",
+      "5. POST /wishlist/add - Add to wishlist",
+      "6. POST /users/addresses - Add delivery address",
+      "7. POST /user-orders/place - Place order",
+      "8. GET /user-orders/:orderId/track - Track order"
+    ],
+    "adminWorkflow": [
+      "1. POST /admin/login - Admin login",
+      "2. POST /categories - Create categories",
+      "3. POST /products - Add products with images",
+      "4. POST /offers - Create offers",
+      "5. GET /orders - Manage orders",
+      "6. PUT /orders/:orderId - Update order status",
+      "7. GET /dashboard - View analytics"
+    ]
+  }
+}
