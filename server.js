@@ -34,7 +34,8 @@ const allowedOrigins = [
   ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",") : []),
   "http://localhost:5173",
   "http://localhost:3000",
-  "https://Unixa-kappa.vercel.app"
+  "https://Unixa-kappa.vercel.app",
+  "https://unixa-admin-panel.vercel.app"
 ].filter(Boolean);
 
 app.use(cors({
