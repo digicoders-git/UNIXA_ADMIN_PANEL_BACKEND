@@ -54,3 +54,16 @@ export const getProductReviews = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+// Get all reviews (for testimonials)
+export const getAllReviews = async (req, res) => {
+  try {
+    const reviews = await Review.find({ isApproved: true }).sort({ createdAt: -1 });
+    res.status(200).json({ 
+      success: true, 
+      reviews 
+    });
+  } catch (error) {
+    console.error("Error fetching all reviews:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};

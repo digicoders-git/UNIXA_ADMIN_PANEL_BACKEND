@@ -52,9 +52,9 @@ export const updateRefundStatus = async (req, res) => {
              // If cancelled/refunded, update the main order status too if needed
              if (request.type === "Cancellation") {
                  await Order.findByIdAndUpdate(request.orderId, { status: "cancelled" });
-             } 
-             // If Return, maybe status = "returned" ? Order model typically has pending/confirmed/etc. 
-             // We can let order status remain or add a new status.
+             } else if (request.type === "Return") {
+                 await Order.findByIdAndUpdate(request.orderId, { status: "returned" });
+             }
         }
 
         await request.save();

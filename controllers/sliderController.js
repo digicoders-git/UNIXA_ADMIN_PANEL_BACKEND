@@ -62,9 +62,12 @@ export const updateSlider = async (req, res) => {
     if (sortOrder !== undefined) slider.sortOrder = Number(sortOrder);
 
     if (req.file) {
-      await cloudinary.uploader.destroy(slider.image.publicId);
+      if (slider.image?.publicId) {
+        await cloudinary.uploader.destroy(slider.image.publicId).catch(err => console.log("Del err:", err));
+      }
       slider.image = { url: req.file.path, publicId: req.file.filename };
     }
+
 
     await slider.save();
     res.json({ message: "Slider updated", slider });
@@ -80,7 +83,10 @@ export const deleteSlider = async (req, res) => {
     const slider = await Slider.findById(id);
     if (!slider) return res.status(404).json({ message: "Slider not found" });
 
-    await cloudinary.uploader.destroy(slider.image.publicId);
+    if (slider.image?.publicId) {
+      await cloudinary.uploader.destroy(slider.image.publicId).catch(err => console.log("Del err:", err));
+    }
+
     await Slider.deleteOne({ _id: slider._id });
 
     res.json({ message: "Slider deleted" });

@@ -10,6 +10,11 @@ const orderItemSchema = new mongoose.Schema(
     size: { type: String },
     color: { type: String },
     addOnName: { type: String },
+    // Auto-generated details per item
+    warrantyId: { type: String },
+    warrantyExpiry: { type: Date },
+    amcId: { type: String },
+    amcPlan: { type: String },
   },
   { _id: false }
 );
@@ -42,7 +47,7 @@ const orderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "confirmed", "shipped", "delivered", "cancelled"],
+      enum: ["pending", "confirmed", "shipped", "delivered", "cancelled", "returned"],
       default: "pending",
     },
     paymentStatus: {

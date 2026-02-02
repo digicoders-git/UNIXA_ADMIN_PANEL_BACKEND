@@ -8,7 +8,8 @@ import {
   getAddresses,
   addAddress,
   updateAddress,
-  deleteAddress
+  deleteAddress,
+  changePassword
 } from "../controllers/userController.js";
 import { authenticateUser } from "../middleware/userAuth.js";
 
@@ -21,6 +22,7 @@ router.post("/login", loginUser);
 // Protected routes
 router.get("/profile", authenticateUser, getProfile);
 router.put("/profile", authenticateUser, updateProfile);
+router.put("/change-password", authenticateUser, changePassword);
 
 // Address management
 router.get("/addresses", authenticateUser, getAddresses);

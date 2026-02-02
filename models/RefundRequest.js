@@ -17,6 +17,13 @@ const refundRequestSchema = new mongoose.Schema(
         default: "Pending" 
     },
     transactionId: { type: String }, // If refunded via payment gateway
+    bankDetails: {
+        accountHolderName: String,
+        bankName: String,
+        accountNumber: String,
+        ifscCode: String,
+        upiId: String
+    },
     adminComments: { type: String },
     images: [{ type: String }], // Evidence for return if needed
   },

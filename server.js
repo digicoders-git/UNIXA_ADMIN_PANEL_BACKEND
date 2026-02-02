@@ -13,6 +13,7 @@ import productRoutes from "./routes/productRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import offerRoutes from "./routes/offerRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
+import amcPlanRoutes from "./routes/amcPlanRoutes.js";
 import enquiryRoutes from "./routes/enquiryRoutes.js";
 import sliderRoutes from "./routes/sliderRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
@@ -31,6 +32,7 @@ import cartRoutes from "./routes/cartRoutes.js";
 import wishlistRoutes from "./routes/wishlistRoutes.js";
 import userOrderRoutes from "./routes/userOrderRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
+import amcRoutes from "./routes/amcRoutes.js";
 
 const app = express();
 
@@ -40,24 +42,34 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:3000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
   "https://Unixa-kappa.vercel.app",
   "https://unixa-admin-panel.vercel.app"
+
 ].filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes("*")) {
+    
+    // Check if origin is allowed
+    const isAllowed = allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes("*");
+    
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      // Instead of throwing an Error that leads to 500, we just return false
+      // for CORS check which results in a standard CORS error in the browser
+      callback(null, false);
     }
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 }));
+
 
 // CORS preflight is already handled by the app.use(cors(...)) middleware above.
 
@@ -102,9 +114,11 @@ app.use("/api/stock", stockRoutes);
 // User routes
 app.use("/api/users", userRoutes);
 app.use("/api/cart", cartRoutes);
+app.use("/api/amc-plans", amcPlanRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/user-orders", userOrderRoutes); 
 app.use("/api/transactions", transactionRoutes); 
+app.use("/api/amc-user", amcRoutes);
 
 // Default
 app.get("/", (_req, res) => res.send("✅ API is running..."));
@@ -127,9 +141,15 @@ app.use((req, res) =>
 // Error Handler
 app.use((err, _req, res, _next) => {
   console.error("Unhandled error:", err);
-  res.status(500).json({ message: "Internal server error" });
+  res.status(500).json({ 
+    message: err.message || "Internal server error",
+    error: err.message,
+    stack: process.env.NODE_ENV === "development" ? err.stack : undefined
+  });
 });
+
 
 // Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server on :${PORT}`));
+// Trigger restart for amc-plans

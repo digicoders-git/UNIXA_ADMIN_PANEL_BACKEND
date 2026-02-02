@@ -1,22 +1,24 @@
 // controllers/userController.js
+import "dotenv/config";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
-const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
-
-const signJwt = (user) =>
-  jwt.sign(
-    { sub: String(user._id), email: user.email, tv: user.tokenVersion },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
+const signJwt = (user) => {
+  const secret = process.env.JWT_SECRET || "fallback_secret";
+  return jwt.sign(
+    { sub: String(user._id), email: user.email, tv: user.tokenVersion || 0 },
+    secret,
+    { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
   );
+};
+
+const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
 
 // Register User
 export const registerUser = async (req, res) => {
   try {
+    console.log("Registering user:", req.body.email);
     const { firstName, lastName, email, phone, password, dateOfBirth, gender } = req.body;
     
     if (!firstName || !lastName || !email || !phone || !password) {
@@ -39,7 +41,10 @@ export const registerUser = async (req, res) => {
       return res.status(409).json({ message: "User already exists with this phone number" });
     }
 
+    console.log("Hashing password...");
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
+    
+    console.log("Creating user document...");
     const user = await User.create({ 
       firstName, 
       lastName, 
@@ -47,11 +52,15 @@ export const registerUser = async (req, res) => {
       phone, 
       password: hash,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-      gender
+      gender: gender ? gender.toLowerCase() : undefined,
+      isActive: true,
+      tokenVersion: 0
     });
 
+    console.log("Signing JWT...");
     const token = signJwt(user);
 
+    console.log("User registered successfully:", user.email);
     res.status(201).json({
       message: "Registration successful",
       user: { 
@@ -66,8 +75,16 @@ export const registerUser = async (req, res) => {
       token
     });
   } catch (err) {
-    console.error("registerUser error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("CRITICAL registerUser error:", err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(val => val.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
+    res.status(500).json({ 
+      message: "Server error during registration", 
+      error: err.message,
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined 
+    });
   }
 };
 
@@ -75,23 +92,40 @@ export const registerUser = async (req, res) => {
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log("Login attempt:", email);
     
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const user = await User.findOne({ email, isActive: true }).select("+password +tokenVersion");
-    if (!user) return res.status(401).json({ message: "Invalid credentials" });
+    // Attempt to find user (older users might not have isActive: true set explicitly)
+    const user = await User.findOne({ email }).select("+password +tokenVersion");
+    
+    if (!user) {
+      console.log("Login failed: User not found");
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
+    if (user.isActive === false) {
+      console.log("Login failed: User inactive");
+      return res.status(401).json({ message: "Account is inactive" });
+    }
+
+    console.log("Comparing password...");
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+    if (!ok) {
+      console.log("Login failed: Password mismatch");
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
     // Update last login
     user.lastLogin = new Date();
     await user.save();
 
+    console.log("Signing JWT...");
     const token = signJwt(user);
 
+    console.log("Login successful:", email);
     res.json({
       message: "Login successful",
       user: { 
@@ -107,8 +141,11 @@ export const loginUser = async (req, res) => {
       token
     });
   } catch (err) {
-    console.error("loginUser error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("CRITICAL loginUser error:", err);
+    res.status(500).json({ 
+      message: "Server error during login",
+      error: err.message 
+    });
   }
 };
 
@@ -152,6 +189,35 @@ export const updateProfile = async (req, res) => {
     res.json({ message: "Profile updated", user });
   } catch (err) {
     console.error("updateProfile error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Change Password
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = await User.findById(req.user.sub).select("+password");
+    
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Verify current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Incorrect current password" });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(SALT_ROUNDS);
+    user.password = await bcrypt.hash(newPassword, salt);
+    
+    // Invalidate old tokens by incrementing version
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+
+    await user.save();
+    res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    console.error("changePassword error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

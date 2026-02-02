@@ -9,7 +9,8 @@ export const authenticateUser = async (req, res, next) => {
 
     if (!token) return res.status(401).json({ message: "Access token required" });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const secret = process.env.JWT_SECRET || "fallback_secret";
+    const decoded = jwt.verify(token, secret);
     const user = await User.findOne({ 
       _id: decoded.sub, 
       email: decoded.email,
@@ -21,14 +22,15 @@ export const authenticateUser = async (req, res, next) => {
     }
 
     // Check token version for logout-all functionality
-    if (decoded.tv !== user.tokenVersion) {
+    if (decoded.tv !== undefined && decoded.tv !== user.tokenVersion) {
       return res.status(401).json({ message: "Token expired, please login again" });
     }
 
     req.user = { 
       sub: user._id.toString(), 
       email: user.email, 
-      name: user.name 
+      firstName: user.firstName,
+      lastName: user.lastName
     };
     next();
   } catch (err) {

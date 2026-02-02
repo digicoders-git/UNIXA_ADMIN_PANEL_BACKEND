@@ -1,4 +1,5 @@
 // controllers/productController.js
+import mongoose from "mongoose";
 import Product from "../models/Product.js";
 import Category from "../models/Category.js";
 import Review from "../models/Review.js";
@@ -9,19 +10,13 @@ import { cloudinary } from "../config/cloudinary.js";
 const parseMaybeJSON = (value, fallback) => {
   if (value === undefined || value === null) return fallback;
   if (Array.isArray(value)) return value;
-
   if (typeof value === "object") return value;
 
   try {
     return JSON.parse(value);
   } catch {
-    if (typeof value === "string") {
-      return value
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean);
-    }
-    return fallback;
+    // Return the string as-is if it's not JSON, or try fallback
+    return typeof value === "string" && value.length > 0 ? value : fallback;
   }
 };
 
@@ -90,16 +85,41 @@ export const createProduct = async (req, res) => {
     res.status(201).json({ message: "Product created", product });
   } catch (err) {
     console.error("createProduct error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({
+      message: `Server error: ${err.message}`,
+      error: err.message,
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined
+    });
   }
 };
 
 /* ================= LIST ================= */
 
-export const listProducts = async (_req, res) => {
+export const listProducts = async (req, res) => {
   try {
+    const { all } = req.query;
+    const match = all === "true" ? {} : { isActive: true };
     const products = await Product.aggregate([
-      { $match: { isActive: true } },
+      { $match: match },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "category",
+          foreignField: "_id",
+          as: "categoryData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$categoryData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $addFields: {
+          category: "$categoryData",
+        },
+      },
       {
         $lookup: {
           from: "reviews",
@@ -116,7 +136,7 @@ export const listProducts = async (_req, res) => {
           totalReviews: { $size: "$reviewData" },
         },
       },
-      { $project: { reviewData: 0 } },
+      { $project: { reviewData: 0, categoryData: 0 } },
       { $sort: { createdAt: -1 } },
     ]);
 
@@ -127,19 +147,22 @@ export const listProducts = async (_req, res) => {
   }
 };
 
+
 /* ================= GET ONE ================= */
 
 export const getProduct = async (req, res) => {
   try {
     const { idOrSlug } = req.params;
 
-    const product =
-      (await Product.findOne({ slug: idOrSlug })
+    let product = await Product.findOne({ slug: idOrSlug })
+      .populate("category", "name slug")
+      .populate("offer");
+
+    if (!product && mongoose.Types.ObjectId.isValid(idOrSlug)) {
+      product = await Product.findById(idOrSlug)
         .populate("category", "name slug")
-        .populate("offer")) ||
-      (await Product.findById(idOrSlug)
-        .populate("category", "name slug")
-        .populate("offer"));
+        .populate("offer");
+    }
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
@@ -171,9 +194,11 @@ export const updateProduct = async (req, res) => {
   try {
     const { idOrSlug } = req.params;
 
-    const product =
-      (await Product.findOne({ slug: idOrSlug })) ||
-      (await Product.findById(idOrSlug));
+    let product = await Product.findOne({ slug: idOrSlug });
+
+    if (!product && mongoose.Types.ObjectId.isValid(idOrSlug)) {
+      product = await Product.findById(idOrSlug);
+    }
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
@@ -236,14 +261,20 @@ export const updateProduct = async (req, res) => {
     /* ===== IMAGE UPDATE ===== */
 
     if (req.files?.mainImage?.[0]) {
-      await cloudinary.uploader.destroy(product.mainImage.publicId);
+      if (product.mainImage?.publicId) {
+        await cloudinary.uploader.destroy(product.mainImage.publicId).catch(err => console.log("Cloudinary destroy error:", err));
+      }
       const file = req.files.mainImage[0];
       product.mainImage = { url: file.path, publicId: file.filename };
     }
 
     if (req.files?.galleryImages?.length) {
-      for (const img of product.galleryImages) {
-        await cloudinary.uploader.destroy(img.publicId);
+      if (product.galleryImages?.length) {
+        for (const img of product.galleryImages) {
+          if (img.publicId) {
+            await cloudinary.uploader.destroy(img.publicId).catch(err => console.log("Cloudinary destroy error:", err));
+          }
+        }
       }
       product.galleryImages = req.files.galleryImages.map((file) => ({
         url: file.path,
@@ -255,9 +286,15 @@ export const updateProduct = async (req, res) => {
     res.json({ message: "Product updated", product });
   } catch (err) {
     console.error("updateProduct error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ 
+      message: `Internal server error: ${err.message}`, 
+      error: err.message,
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined 
+    });
+
   }
 };
+
 
 /* ================= DELETE ================= */
 
@@ -265,17 +302,24 @@ export const deleteProduct = async (req, res) => {
   try {
     const { idOrSlug } = req.params;
 
-    const product =
-      (await Product.findOne({ slug: idOrSlug })) ||
-      (await Product.findById(idOrSlug));
+    let product = await Product.findOne({ slug: idOrSlug });
+    if (!product && mongoose.Types.ObjectId.isValid(idOrSlug)) {
+      product = await Product.findById(idOrSlug);
+    }
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    await cloudinary.uploader.destroy(product.mainImage.publicId);
-    for (const img of product.galleryImages) {
-      await cloudinary.uploader.destroy(img.publicId);
+    if (product.mainImage?.publicId) {
+      await cloudinary.uploader.destroy(product.mainImage.publicId).catch(err => console.log("Del error:", err));
+    }
+    if (product.galleryImages?.length) {
+      for (const img of product.galleryImages) {
+        if (img.publicId) {
+          await cloudinary.uploader.destroy(img.publicId).catch(err => console.log("Del error:", err));
+        }
+      }
     }
 
     await Product.deleteOne({ _id: product._id });

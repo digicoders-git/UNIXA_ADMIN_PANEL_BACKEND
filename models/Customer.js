@@ -36,7 +36,7 @@ const complaintSchema = new mongoose.Schema({
   complaintId: String,
   type: {
     type: String,
-    enum: ["No Water", "Bad Taste", "Leakage", "Noise", "Other"],
+    enum: ["No Water", "Bad Taste", "Leakage", "Noise", "Other", "General Maintenance", "Filter Replacement", "Water Quality Test", "Repair / Leakage"],
   },
   description: String,
   date: { type: Date, default: Date.now },

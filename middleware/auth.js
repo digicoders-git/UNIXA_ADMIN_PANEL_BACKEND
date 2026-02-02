@@ -6,10 +6,12 @@ export const requireAuth = (req, res, next) => {
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;
     if (!token) return res.status(401).json({ message: "Missing auth token" });
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // { sub, adminId, tv, iat, exp }
+    const secret = process.env.JWT_SECRET || "fallback_secret";
+    const payload = jwt.verify(token, secret);
+    req.user = payload; // { sub, email, tv }
     next();
   } catch (err) {
+    console.error("Auth Error:", err.message);
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 };

@@ -23,9 +23,11 @@ export const createCategory = async (req, res) => {
   }
 };
 
-export const listCategories = async (_req, res) => {
+export const listCategories = async (req, res) => {
   try {
-    const categories = await Category.find({ isActive: true }).sort({
+    const { all } = req.query;
+    const filter = all === "true" ? {} : { isActive: true };
+    const categories = await Category.find(filter).sort({
       name: 1,
     });
     res.json({ categories });
@@ -34,6 +36,7 @@ export const listCategories = async (_req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 export const getCategory = async (req, res) => {
   try {
@@ -80,19 +83,26 @@ export const updateCategory = async (req, res) => {
     }
 
     if (req.file) {
-      if (category.image && category.image.publicId) {
-        await cloudinary.uploader.destroy(category.image.publicId);
+      if (category.image?.publicId) {
+        await cloudinary.uploader.destroy(category.image.publicId).catch(err => console.log("Cloudinary destroy error:", err));
       }
       category.image = { url: req.file.path, publicId: req.file.filename };
     }
+
 
     await category.save();
     res.json({ message: "Category updated", category });
   } catch (err) {
     console.error("updateCategory error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ 
+      message: `Server error: ${err.message}`,
+      error: err.message,
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined 
+    });
+
   }
 };
+
 
 export const deleteCategory = async (req, res) => {
   try {
@@ -113,9 +123,10 @@ export const deleteCategory = async (req, res) => {
         .json({ message: "Category has products, cannot delete" });
     }
 
-    if (category.image && category.image.publicId) {
-      await cloudinary.uploader.destroy(category.image.publicId);
+    if (category.image?.publicId) {
+      await cloudinary.uploader.destroy(category.image.publicId).catch(err => console.log("Cloudinary destroy error:", err));
     }
+
 
     await Category.deleteOne({ _id: category._id });
     res.json({ message: "Category deleted" });
