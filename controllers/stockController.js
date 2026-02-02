@@ -14,10 +14,22 @@ export const getStockOverview = async (req, res) => {
       ];
     }
 
-    const products = await Product.find(query).select("name mainImage price stock lowStockThreshold isActive");
+    const products = await Product.find().select("name mainImage price stock lowStockThreshold isActive slug");
     
     // Filter by logic if needed (e.g., low stock)
     let finalProducts = products;
+    
+    if (search) {
+        const searchTerms = search.toLowerCase().replace(/^(sku:|id:|sku|id)\s*/g, '').trim();
+        if (searchTerms) {
+             finalProducts = finalProducts.filter(p => 
+                (p.name && p.name.toLowerCase().includes(searchTerms)) || 
+                (p.slug && p.slug.toLowerCase().includes(searchTerms)) ||
+                (p._id && p._id.toString().toLowerCase().includes(searchTerms))
+            );
+        }
+    }
+
     if (status === "Low Stock") {
         finalProducts = products.filter(p => p.stock <= p.lowStockThreshold && p.stock > 0);
     } else if (status === "Out of Stock") {
