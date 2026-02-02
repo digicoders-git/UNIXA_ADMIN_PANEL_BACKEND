@@ -19,8 +19,13 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import blogRoutes from "./routes/blogRoutes.js";
 // import paymentRoutes from "./routes/paymentRoutes.js";
 import reviewRoutes from "./routes/reviewRoutes.js";
+import employeeRoutes from "./routes/employeeRoutes.js";
+import customerRoutes from "./routes/customerRoutes.js";
+import employeeAssetRoutes from "./routes/employeeAssetRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
+import refundRoutes from "./routes/refundRoutes.js";
+import stockRoutes from "./routes/stockRoutes.js";
 
-// User routes
 import userRoutes from "./routes/userRoutes.js";
 import cartRoutes from "./routes/cartRoutes.js";
 import wishlistRoutes from "./routes/wishlistRoutes.js";
@@ -33,6 +38,7 @@ app.use(helmet());
 const allowedOrigins = [
   ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",") : []),
   "http://localhost:5173",
+  "http://localhost:5174",
   "http://localhost:3000",
   "https://Unixa-kappa.vercel.app",
   "https://unixa-admin-panel.vercel.app"
@@ -86,6 +92,12 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/blogs", blogRoutes);
 app.use("/api/reviews", reviewRoutes);
 // app.use("/api/payment", paymentRoutes);
+app.use("/api/employees", employeeRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/employee-assets", employeeAssetRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/refunds", refundRoutes);
+app.use("/api/stock", stockRoutes);
 
 // User routes
 app.use("/api/users", userRoutes);

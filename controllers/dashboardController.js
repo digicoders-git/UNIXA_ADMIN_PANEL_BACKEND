@@ -5,6 +5,7 @@ import Product from "../models/Product.js";
 import Category from "../models/Category.js";
 import Offer from "../models/Offer.js";
 import Enquiry from "../models/Enquiry.js";
+import Employee from "../models/Employee.js";
 
 export const getDashboardStats = async (req, res) => {
   try {
@@ -142,6 +143,15 @@ export const getDashboardStats = async (req, res) => {
       Offer.find({ isActive: true }).sort({ createdAt: -1 }).limit(10),
     ]);
 
+    let totalEmployees = 0;
+    let activeEmployees = 0;
+    try {
+      totalEmployees = await Employee.countDocuments();
+      activeEmployees = await Employee.countDocuments({ status: true });
+    } catch (empErr) {
+      console.error("Failed to fetch employee stats:", empErr);
+    }
+
     const totalRevenue = allRevenueAgg[0]?.revenue || 0;
     const monthRevenue = monthRevenueAgg[0]?.revenue || 0;
     const avgOrderValue =
@@ -186,6 +196,8 @@ export const getDashboardStats = async (req, res) => {
         unreadEnquiries,
         activeOffers: activeOffersCount,
         todayOrders: todayOrdersCount,
+        totalEmployees,
+        activeEmployees,
       },
       charts: {
         salesLast7Days, // line/bar chart

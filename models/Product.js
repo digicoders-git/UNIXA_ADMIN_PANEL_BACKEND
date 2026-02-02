@@ -67,6 +67,9 @@ const productSchema = new mongoose.Schema(
     specifications: { type: specificationSchema, default: () => ({}) },
     features: [{ type: String, trim: true }],
 
+    stock: { type: Number, default: 0, min: 0 },
+    lowStockThreshold: { type: Number, default: 5 },
+
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
