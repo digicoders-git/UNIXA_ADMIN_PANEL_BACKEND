@@ -22,6 +22,35 @@ export const getCustomers = async (req, res) => {
   }
 };
 
+// Get All Complaints (Aggregated)
+export const getAllComplaints = async (req, res) => {
+  try {
+    const complaints = await Customer.aggregate([
+      { $unwind: "$complaints" },
+      { $sort: { "complaints.date": -1 } },
+      {
+        $project: {
+          _id: 0,
+          customerId: "$_id",
+          customerName: "$name",
+          customerMobile: "$mobile",
+          ticketId: "$complaints.complaintId",
+          type: "$complaints.type",
+          priority: "$complaints.priority",
+          status: "$complaints.status",
+          date: "$complaints.date",
+          description: "$complaints.description",
+          assignedTechnician: "$complaints.assignedTechnician",
+          resolutionNotes: "$complaints.resolutionNotes"
+        }
+      }
+    ]);
+    res.json(complaints);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Get single customer
 export const getCustomerById = async (req, res) => {
   try {

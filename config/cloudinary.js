@@ -132,10 +132,40 @@ const uploadCategoryImage = (req, res, next) => {
 };
 
 
+// =====================================================
+// ================= RO PART IMAGE =====================
+// =====================================================
+
+const roPartStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "glassecommerce_ro_parts",
+    resource_type: "auto",
+  },
+});
+
+const roPartMulter = multer({
+  storage: roPartStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    cb(null, true);
+  },
+});
+
+const roPartUpload = roPartMulter.single("mainImage");
+const uploadRoPartImage = (req, res, next) => {
+  const contentType = req.headers["content-type"] || "";
+  if (contentType.toLowerCase().includes("multipart/form-data")) {
+    return roPartUpload(req, res, next);
+  }
+  next();
+};
+
 // ================= EXPORT =================
 export {
   cloudinary,
   uploadProductImages,
   uploadSliderImage,
   uploadCategoryImage,
+  uploadRoPartImage,
 };

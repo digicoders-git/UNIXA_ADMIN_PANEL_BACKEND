@@ -3,20 +3,17 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import Admin from "../models/Admin.js";
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
-const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
+const getSaltRounds = () => parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
 
-/////////////// helper /////////
-
-const signJwt = (admin) =>
-  jwt.sign(
+const signJwt = (admin) => {
+  const secret = process.env.JWT_SECRET;
+  const expires = process.env.JWT_EXPIRES_IN || "7d";
+  return jwt.sign(
     { sub: String(admin._id), adminId: admin.adminId, tv: admin.tokenVersion },
-    JWT_SECRET,
-    {
-      expiresIn: JWT_EXPIRES_IN,
-    }
+    secret,
+    { expiresIn: expires }
   );
+};
 
 //////////   Create Admin
 export const createAdmin = async (req, res) => {
@@ -35,7 +32,7 @@ export const createAdmin = async (req, res) => {
         .json({ message: "Admin with this adminId already exists." });
     }
 
-    const hash = await bcrypt.hash(password, SALT_ROUNDS);
+    const hash = await bcrypt.hash(password, getSaltRounds());
     const admin = await Admin.create({ adminId, password: hash, name });
 
     return res.status(201).json({
@@ -147,7 +144,7 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ message: "Current password is incorrect." });
     }
 
-    const hash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const hash = await bcrypt.hash(newPassword, getSaltRounds());
     admin.password = hash;
 
     // bump tokenVersion so all old tokens become invalid

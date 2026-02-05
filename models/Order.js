@@ -3,7 +3,17 @@ import mongoose from "mongoose";
 
 const orderItemSchema = new mongoose.Schema(
   {
-    product: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+    product: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      required: true, 
+      refPath: 'productType' 
+    },
+    productType: { 
+      type: String, 
+      required: true, 
+      enum: ['Product', 'RoPart'],
+      default: 'Product'
+    },
     productName: { type: String, required: true },
     productPrice: { type: Number, required: true },
     quantity: { type: Number, required: true, min: 1 },

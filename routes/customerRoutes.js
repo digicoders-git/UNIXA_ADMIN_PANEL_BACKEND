@@ -10,6 +10,7 @@ import {
   getAMCDashboard,
   createAMC,
   renewAMC,
+  getAllComplaints,
 } from "../controllers/customerController.js";
 
 const router = express.Router();
@@ -18,6 +19,7 @@ router.get("/amc/dashboard", getAMCDashboard);
 router.post("/amc/new", createAMC); // Create new AMC for a customer
 router.post("/:id/amc/renew", renewAMC); // Renew AMC for a customer
 
+router.get("/complaints/all", getAllComplaints); // Get aggregated complaints
 router.get("/", getCustomers);
 router.get("/:id", getCustomerById);
 router.post("/", createCustomer);

@@ -26,6 +26,7 @@ import employeeAssetRoutes from "./routes/employeeAssetRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import refundRoutes from "./routes/refundRoutes.js";
 import stockRoutes from "./routes/stockRoutes.js";
+import roPartRoutes from "./routes/roPartRoutes.js";
 
 import userRoutes from "./routes/userRoutes.js";
 import cartRoutes from "./routes/cartRoutes.js";
@@ -111,6 +112,7 @@ app.use("/api/employee-assets", employeeAssetRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/refunds", refundRoutes);
 app.use("/api/stock", stockRoutes);
+app.use("/api/ro-parts", roPartRoutes);
 
 // User routes
 app.use("/api/users", userRoutes);

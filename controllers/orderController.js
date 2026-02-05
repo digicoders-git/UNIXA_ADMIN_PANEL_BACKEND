@@ -1,6 +1,7 @@
 // controllers/orderController.js
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
+import RoPart from "../models/RoPart.js";
 import Offer from "../models/Offer.js";
 import Customer from "../models/Customer.js";
 import User from "../models/User.js";
@@ -29,6 +30,8 @@ export const placeOrder = async (req, res) => {
     const { userId, items, shippingAddress, offerCode, paymentMethod, notes } =
       req.body;
 
+    console.log("Place Order Attempt:", { userId, itemsCount: items?.length });
+
     if (!userId || !items || !Array.isArray(items) || items.length === 0) {
       return res
         .status(400)
@@ -38,29 +41,51 @@ export const placeOrder = async (req, res) => {
       return res.status(400).json({ message: "shippingAddress is invalid" });
     }
 
-    const productIds = items.map((i) => i.productId);
-    const products = await Product.find({ _id: { $in: productIds } });
+    const productIds = items.map((i) => i.productId).filter(id => id);
+    console.log("Extracted Product IDs:", productIds);
+    
+    // Fetch from both collections
+    const [products, roParts] = await Promise.all([
+      Product.find({ _id: { $in: productIds } }),
+      RoPart.find({ _id: { $in: productIds } })
+    ]);
+
+    console.log(`Found ${products.length} products and ${roParts.length} RO parts`);
 
     const itemsForOrder = [];
     let subtotal = 0;
 
     for (const item of items) {
-      const product = products.find(
+      console.log("Checking item:", item.productId);
+      // Check in products first
+      let itemData = products.find(
         (p) => String(p._id) === String(item.productId)
       );
-      if (!product) {
+      let type = "Product";
+
+      // If not in products, check in roParts
+      if (!itemData) {
+        itemData = roParts.find(
+          (p) => String(p._id) === String(item.productId)
+        );
+        type = "RoPart";
+      }
+
+      if (!itemData) {
+        console.log("❌ Item not found in either collection:", item.productId);
         return res
           .status(400)
           .json({ message: `Invalid productId: ${item.productId}` });
       }
       const qty = Number(item.quantity || 1);
-      const linePrice = product.finalPrice * qty;
+      const linePrice = itemData.finalPrice * qty;
       subtotal += linePrice;
 
       itemsForOrder.push({
-        product: product._id,
-        productName: product.name,
-        productPrice: product.finalPrice,
+        product: itemData._id,
+        productType: type, // Store the model type for refPath
+        productName: itemData.name,
+        productPrice: itemData.finalPrice,
         quantity: qty,
         size: item.size,
         color: item.color,
@@ -157,7 +182,11 @@ export const placeOrder = async (req, res) => {
     res.status(201).json({ message: "Order placed", order });
   } catch (err) {
     console.error("placeOrder error:", err);
-    res.status(500).json({ message: "Server error" });
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(val => val.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
