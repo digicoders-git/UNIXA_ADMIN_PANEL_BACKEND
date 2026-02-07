@@ -161,6 +161,35 @@ const uploadRoPartImage = (req, res, next) => {
   next();
 };
 
+// =====================================================
+// ================= RENTAL PLAN IMAGE =================
+// =====================================================
+
+const rentalPlanStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "glassecommerce_rental_plans",
+    resource_type: "auto",
+  },
+});
+
+const rentalPlanMulter = multer({
+  storage: rentalPlanStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    cb(null, true);
+  },
+});
+
+const rentalPlanUpload = rentalPlanMulter.single("image");
+const uploadRentalPlanImage = (req, res, next) => {
+  const contentType = req.headers["content-type"] || "";
+  if (contentType.toLowerCase().includes("multipart/form-data")) {
+    return rentalPlanUpload(req, res, next);
+  }
+  next();
+};
+
 // ================= EXPORT =================
 export {
   cloudinary,
@@ -168,4 +197,5 @@ export {
   uploadSliderImage,
   uploadCategoryImage,
   uploadRoPartImage,
+  uploadRentalPlanImage,
 };

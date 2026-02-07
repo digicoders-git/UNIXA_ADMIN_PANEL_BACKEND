@@ -15,12 +15,13 @@ export const createRoPart = async (req, res) => {
       description,
       categoryId,
       isActive,
+      p_id,
     } = req.body;
 
-    if (!name || !price || !categoryId) {
+    if (!name || !price || !categoryId || !p_id) {
       return res
         .status(400)
-        .json({ message: "name, price, categoryId required" });
+        .json({ message: "name, price, categoryId, p_id required" });
     }
 
     const category = await Category.findById(categoryId);
@@ -33,10 +34,11 @@ export const createRoPart = async (req, res) => {
     }
 
     const roPart = await RoPart.create({
+      p_id,
       name,
       category: category._id,
       price: Number(price),
-      discountPercent: Number(discountPercent || 0),
+      discountPercent: Math.max(0, Math.min(100, Number(discountPercent || 0))),
       mainImage: {
         url: req.file.path,
         publicId: req.file.filename,
@@ -75,11 +77,12 @@ export const listRoParts = async (req, res) => {
 export const getRoPart = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid ID format" });
+    let roPart = await RoPart.findOne({ p_id: id }).populate("category", "name slug");
+
+    if (!roPart && mongoose.Types.ObjectId.isValid(id)) {
+      roPart = await RoPart.findById(id).populate("category", "name slug");
     }
 
-    const roPart = await RoPart.findById(id).populate("category", "name slug");
     if (!roPart) {
       return res.status(404).json({ message: "RO Part not found" });
     }
@@ -96,7 +99,10 @@ export const getRoPart = async (req, res) => {
 export const updateRoPart = async (req, res) => {
   try {
     const { id } = req.params;
-    let roPart = await RoPart.findById(id);
+    let roPart = await RoPart.findOne({ p_id: id });
+    if (!roPart && mongoose.Types.ObjectId.isValid(id)) {
+      roPart = await RoPart.findById(id);
+    }
 
     if (!roPart) {
       return res.status(404).json({ message: "RO Part not found" });
@@ -109,12 +115,14 @@ export const updateRoPart = async (req, res) => {
       description,
       categoryId,
       isActive,
+      p_id,
     } = req.body;
 
+    if (p_id) roPart.p_id = p_id;
     if (name) roPart.name = name;
     if (price !== undefined) roPart.price = Number(price);
     if (discountPercent !== undefined)
-      roPart.discountPercent = Number(discountPercent);
+      roPart.discountPercent = Math.max(0, Math.min(100, Number(discountPercent)));
 
     if (categoryId) {
       const category = await Category.findById(categoryId);
@@ -147,7 +155,10 @@ export const updateRoPart = async (req, res) => {
 export const deleteRoPart = async (req, res) => {
   try {
     const { id } = req.params;
-    const roPart = await RoPart.findById(id);
+    let roPart = await RoPart.findOne({ p_id: id });
+    if (!roPart && mongoose.Types.ObjectId.isValid(id)) {
+      roPart = await RoPart.findById(id);
+    }
 
     if (!roPart) {
       return res.status(404).json({ message: "RO Part not found" });

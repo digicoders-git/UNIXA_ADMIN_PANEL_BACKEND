@@ -34,6 +34,7 @@ import wishlistRoutes from "./routes/wishlistRoutes.js";
 import userOrderRoutes from "./routes/userOrderRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import amcRoutes from "./routes/amcRoutes.js";
+import rentalPlanRoutes from "./routes/rentalPlanRoutes.js";
 
 const app = express();
 
@@ -122,6 +123,9 @@ app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/user-orders", userOrderRoutes); 
 app.use("/api/transactions", transactionRoutes); 
 app.use("/api/amc-user", amcRoutes);
+app.use("/api/rental-plans", rentalPlanRoutes);
+
+
 
 // Default
 app.get("/", (_req, res) => res.send("✅ API is running..."));

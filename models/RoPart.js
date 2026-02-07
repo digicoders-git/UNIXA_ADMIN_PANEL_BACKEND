@@ -12,6 +12,7 @@ const imageSchema = new mongoose.Schema(
 const roPartSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    p_id: { type: String, unique: true, index: true, trim: true },
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",

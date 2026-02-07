@@ -34,8 +34,10 @@ const specificationSchema = new mongoose.Schema(
 
 const productSchema = new mongoose.Schema(
   {
+
     name: { type: String, required: true, trim: true },
     slug: { type: String, unique: true, index: true },
+    p_id: { type: String, unique: true, index: true, trim: true }, 
 
 
     category: {

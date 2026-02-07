@@ -38,12 +38,13 @@ export const createProduct = async (req, res) => {
       features,
       offerId,
       isActive,
+      p_id,
     } = req.body;
 
-    if (!name || !price || !categoryId) {
+    if (!name || !price || !categoryId || !p_id) {
       return res
         .status(400)
-        .json({ message: "name, price, categoryId required" });
+        .json({ message: "name, price, categoryId, p_id required" });
     }
 
     const category = await Category.findById(categoryId);
@@ -59,6 +60,7 @@ export const createProduct = async (req, res) => {
     const galleryFiles = req.files.galleryImages || [];
 
     const product = await Product.create({
+      p_id,
       name,
       category: category._id,
       price: Number(price),
@@ -154,10 +156,14 @@ export const getProduct = async (req, res) => {
   try {
     const { idOrSlug } = req.params;
 
-    let product = await Product.findOne({ slug: idOrSlug })
+    // Check p_id or slug first
+    let product = await Product.findOne({ 
+      $or: [{ slug: idOrSlug }, { p_id: idOrSlug }] 
+    })
       .populate("category", "name slug")
       .populate("offer");
 
+    // Check _id if not found and valid ObjectId
     if (!product && mongoose.Types.ObjectId.isValid(idOrSlug)) {
       product = await Product.findById(idOrSlug)
         .populate("category", "name slug")
@@ -194,7 +200,9 @@ export const updateProduct = async (req, res) => {
   try {
     const { idOrSlug } = req.params;
 
-    let product = await Product.findOne({ slug: idOrSlug });
+    let product = await Product.findOne({ 
+      $or: [{ slug: idOrSlug }, { p_id: idOrSlug }] 
+    });
 
     if (!product && mongoose.Types.ObjectId.isValid(idOrSlug)) {
       product = await Product.findById(idOrSlug);
@@ -218,10 +226,11 @@ export const updateProduct = async (req, res) => {
       specifications,
       features,
       offerId,
+      p_id,
     } = req.body;
 
     // 🔥 SAFE UPDATES (JSON OR FORM DATA)
-
+    if (p_id) product.p_id = p_id;
     if (name) product.name = name;
     if (price !== undefined) product.price = Number(price);
     if (discountPercent !== undefined)
@@ -302,7 +311,9 @@ export const deleteProduct = async (req, res) => {
   try {
     const { idOrSlug } = req.params;
 
-    let product = await Product.findOne({ slug: idOrSlug });
+    let product = await Product.findOne({
+       $or: [{ slug: idOrSlug }, { p_id: idOrSlug }] 
+    });
     if (!product && mongoose.Types.ObjectId.isValid(idOrSlug)) {
       product = await Product.findById(idOrSlug);
     }
