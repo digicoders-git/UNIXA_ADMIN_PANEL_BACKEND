@@ -136,7 +136,14 @@ export const renewAMC = async (req, res) => {
     newEndDate.setFullYear(newEndDate.getFullYear() + 1);
 
     customer.amcDetails.endDate = newEndDate;
-    customer.amcHistory.push({ ...customer.amcDetails, status: "Renewed" }); // Archive old state? Or just log renewal
+    
+    // Archive the current AMC period to history before extending
+    // We remove _id to prevent potential duplicate subdocument ID conflicts in the array
+    const historyItem = customer.amcDetails.toObject();
+    delete historyItem._id;
+    historyItem.status = "Expired"; // Previous period is now considered expired/archived
+    
+    customer.amcHistory.push(historyItem); 
     
     await customer.save();
 
