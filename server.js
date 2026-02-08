@@ -35,6 +35,9 @@ import userOrderRoutes from "./routes/userOrderRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import amcRoutes from "./routes/amcRoutes.js";
 import rentalPlanRoutes from "./routes/rentalPlanRoutes.js";
+import userDashboardRoutes from "./routes/userDashboardRoutes.js";
+import userRentalRoutes from "./routes/userRentalRoutes.js";
+import userServiceRequestRoutes from "./routes/userServiceRequestRoutes.js";
 
 const app = express();
 
@@ -43,9 +46,13 @@ const allowedOrigins = [
   ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",") : []),
   "http://localhost:5173",
   "http://localhost:5174",
+  "http://localhost:5175",
+  "http://localhost:5176",
+  "http://localhost:5177",
   "http://localhost:3000",
   "http://127.0.0.1:5173",
   "http://127.0.0.1:5174",
+  "http://localhost:5180",
   "https://Unixa-kappa.vercel.app",
   "https://unixa-admin-panel.vercel.app",
   "https://unixa-website.vercel.app"
@@ -124,6 +131,9 @@ app.use("/api/user-orders", userOrderRoutes);
 app.use("/api/transactions", transactionRoutes); 
 app.use("/api/amc-user", amcRoutes);
 app.use("/api/rental-plans", rentalPlanRoutes);
+app.use("/api/user-dashboard", userDashboardRoutes);
+app.use("/api/user-rentals", userRentalRoutes);
+app.use("/api/service-requests", userServiceRequestRoutes);
 
 
 

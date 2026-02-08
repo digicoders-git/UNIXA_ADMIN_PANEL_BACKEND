@@ -300,3 +300,34 @@ export const renewAMC = async (req, res) => {
         res.status(400).json({ message: error.message });
     }
 };
+
+// Update Complaint Status
+export const updateComplaintStatus = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { status, resolutionNotes, assignedTechnician, priority } = req.body;
+
+    // Use positional operator $ to update the specific element in array
+    const query = { "complaints.complaintId": ticketId };
+    const updateFields = {};
+
+    if (status) updateFields["complaints.$.status"] = status;
+    if (resolutionNotes) updateFields["complaints.$.resolutionNotes"] = resolutionNotes;
+    if (assignedTechnician) updateFields["complaints.$.assignedTechnician"] = assignedTechnician;
+    if (priority) updateFields["complaints.$.priority"] = priority;
+
+    const customer = await Customer.findOneAndUpdate(
+      query,
+      { $set: updateFields },
+      { new: true }
+    );
+
+    if (!customer) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    res.json({ message: "Complaint updated successfully", customer });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

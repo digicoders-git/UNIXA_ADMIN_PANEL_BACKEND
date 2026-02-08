@@ -1,5 +1,18 @@
 import mongoose from "mongoose";
 
+const rentalDetailsSchema = new mongoose.Schema({
+  planId: { type: mongoose.Schema.Types.ObjectId, ref: "RentalPlan" },
+  planName: String,
+  startDate: Date,
+  endDate: Date,
+  nextDueDate: Date,
+  amount: Number,
+  status: { type: String, enum: ["Active", "Inactive", "Pending", "Cancelled"], default: "Inactive" },
+  paymentStatus: { type: String, enum: ["Paid", "Due", "Overdue"], default: "Paid" },
+  machineModel: String,
+  machineImage: String
+});
+
 const waterPurifierSchema = new mongoose.Schema({
   brand: String,
   model: String,
@@ -36,7 +49,7 @@ const complaintSchema = new mongoose.Schema({
   complaintId: String,
   type: {
     type: String,
-    enum: ["No Water", "Bad Taste", "Leakage", "Noise", "Other", "General Maintenance", "Filter Replacement", "Water Quality Test", "Repair / Leakage"],
+    enum: ["No Water", "Bad Taste", "Leakage", "Noise", "Other", "General Maintenance", "Filter Replacement", "Water Quality Test", "Repair / Leakage", "AMC Inquiry", "Service Request", "Filter Change", "Installation", "Other Issue"],
   },
   description: String,
   date: { type: Date, default: Date.now },
@@ -118,6 +131,7 @@ const customerSchema = new mongoose.Schema(
     serviceHistory: [serviceHistorySchema],
     complaints: [complaintSchema],
     amcDetails: amcDetailsSchema,
+    rentalDetails: rentalDetailsSchema,
     amcHistory: [amcDetailsSchema], // Archive of previous AMCs
     partsHistory: [partsHistorySchema],
     reminders: [reminderSchema],

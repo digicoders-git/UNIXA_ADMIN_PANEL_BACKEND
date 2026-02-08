@@ -131,7 +131,10 @@ export const getUserOrders = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .populate("items.product", "name slug mainImage");
+      .populate({
+        path: "items.product",
+        select: "name slug mainImage p_id" 
+      });
 
     const total = await Order.countDocuments(filter);
 
@@ -158,7 +161,10 @@ export const getOrder = async (req, res) => {
     const order = await Order.findOne({ 
       _id: orderId, 
       userId: req.user.sub 
-    }).populate("items.product", "name slug mainImage");
+    }).populate({
+      path: "items.product",
+      select: "name slug mainImage p_id" 
+    });
 
     if (!order) return res.status(404).json({ message: "Order not found" });
 
