@@ -23,6 +23,12 @@ const roPartSchema = new mongoose.Schema(
     finalPrice: { type: Number, default: 0 },
     mainImage: { type: imageSchema, required: true },
     description: { type: String, default: "" },
+    amcPlans: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AmcPlan",
+      },
+    ],
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

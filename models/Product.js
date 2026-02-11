@@ -72,6 +72,13 @@ const productSchema = new mongoose.Schema(
     stock: { type: Number, default: 0, min: 0 },
     lowStockThreshold: { type: Number, default: 5 },
 
+    amcPlans: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AmcPlan",
+      },
+    ],
+
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

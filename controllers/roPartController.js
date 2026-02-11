@@ -16,6 +16,7 @@ export const createRoPart = async (req, res) => {
       categoryId,
       isActive,
       p_id,
+      amcPlans,
     } = req.body;
 
     if (!name || !price || !categoryId || !p_id) {
@@ -44,6 +45,7 @@ export const createRoPart = async (req, res) => {
         publicId: req.file.filename,
       },
       description,
+      amcPlans: typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans || [],
       isActive: isActive === "false" ? false : true,
     });
 
@@ -63,6 +65,7 @@ export const listRoParts = async (req, res) => {
     
     const roParts = await RoPart.find(match)
       .populate("category", "name slug")
+      .populate("amcPlans")
       .sort({ createdAt: -1 });
 
     res.json({ roParts });
@@ -77,10 +80,10 @@ export const listRoParts = async (req, res) => {
 export const getRoPart = async (req, res) => {
   try {
     const { id } = req.params;
-    let roPart = await RoPart.findOne({ p_id: id }).populate("category", "name slug");
+    let roPart = await RoPart.findOne({ p_id: id }).populate("category", "name slug").populate("amcPlans");
 
     if (!roPart && mongoose.Types.ObjectId.isValid(id)) {
-      roPart = await RoPart.findById(id).populate("category", "name slug");
+      roPart = await RoPart.findById(id).populate("category", "name slug").populate("amcPlans");
     }
 
     if (!roPart) {
@@ -116,6 +119,7 @@ export const updateRoPart = async (req, res) => {
       categoryId,
       isActive,
       p_id,
+      amcPlans,
     } = req.body;
 
     if (p_id) roPart.p_id = p_id;
@@ -132,6 +136,15 @@ export const updateRoPart = async (req, res) => {
     }
 
     if (description !== undefined) roPart.description = description;
+    
+    if (amcPlans !== undefined) {
+      try {
+        roPart.amcPlans = typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans;
+      } catch (e) {
+        roPart.amcPlans = amcPlans;
+      }
+    }
+
     if (isActive !== undefined)
       roPart.isActive = isActive === true || isActive === "true";
 

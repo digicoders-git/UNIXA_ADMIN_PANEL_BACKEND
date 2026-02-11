@@ -4,7 +4,7 @@ import { cloudinary } from "../config/cloudinary.js";
 // Create Rental Plan
 export const createRentalPlan = async (req, res) => {
   try {
-    const { planName, price, features, tag, installationCost, deposit, isActive, billingCycle } = req.body;
+    const { planName, price, features, tag, installationCost, deposit, isActive, billingCycle, amcPlans, productId, description } = req.body;
 
     if (!planName || !price) {
       return res.status(400).json({ message: "planName and price are required" });
@@ -39,6 +39,9 @@ export const createRentalPlan = async (req, res) => {
         url: req.file.path,
         publicId: req.file.filename,
       },
+      amcPlans: typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans || [],
+      productId: productId || null,
+      description: description || "",
     });
 
     res.status(201).json({ message: "Rental Plan created", rentalPlan });
@@ -53,7 +56,14 @@ export const getRentalPlans = async (req, res) => {
   try {
     // Optionally filter by isActive if needed, but admin might want to see all
     // For now, return all sorted by price
-    const plans = await RentalPlan.find().sort({ price: 1 });
+    // Populate product and its category, and amcPlans
+    const plans = await RentalPlan.find()
+      .populate({
+        path: "productId",
+        populate: { path: "category" }
+      })
+      .populate("amcPlans")
+      .sort({ price: 1 });
     res.status(200).json({ plans });
   } catch (error) {
     console.error("getRentalPlans error:", error);
@@ -64,7 +74,12 @@ export const getRentalPlans = async (req, res) => {
 // Get Single Plan
 export const getRentalPlan = async (req, res) => {
   try {
-    const plan = await RentalPlan.findById(req.params.id);
+    const plan = await RentalPlan.findById(req.params.id)
+      .populate({
+        path: "productId",
+        populate: { path: "category" }
+      })
+      .populate("amcPlans");
     if (!plan) return res.status(404).json({ message: "Plan not found" });
     res.status(200).json({ plan });
   } catch (error) {
@@ -77,7 +92,7 @@ export const getRentalPlan = async (req, res) => {
 export const updateRentalPlan = async (req, res) => {
   try {
     const { id } = req.params;
-    const { planName, price, features, tag, installationCost, deposit, isActive, billingCycle } = req.body;
+    const { planName, price, features, tag, installationCost, deposit, isActive, billingCycle, amcPlans, productId, description } = req.body;
 
     const plan = await RentalPlan.findById(id);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
@@ -113,7 +128,16 @@ export const updateRentalPlan = async (req, res) => {
     if (installationCost !== undefined) plan.installationCost = installationCost;
     if (deposit !== undefined) plan.deposit = deposit;
     if (billingCycle !== undefined) plan.billingCycle = billingCycle;
+    if (amcPlans !== undefined) {
+      try {
+        plan.amcPlans = typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans;
+      } catch (e) {
+        plan.amcPlans = amcPlans;
+      }
+    }
     if (isActive !== undefined) plan.isActive = isActive === "true" || isActive === true;
+    if (productId !== undefined) plan.productId = productId || null;
+    if (description !== undefined) plan.description = description;
 
     await plan.save();
     res.status(200).json({ message: "Plan updated", plan });

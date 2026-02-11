@@ -1,4 +1,7 @@
 import Customer from "../models/Customer.js";
+import UserAmc from "../models/UserAmc.js";
+import User from "../models/User.js";
+import UserNotification from "../models/UserNotification.js";
 
 // Get all customers
 export const getCustomers = async (req, res) => {
@@ -35,6 +38,7 @@ export const getAllComplaints = async (req, res) => {
           customerName: "$name",
           customerMobile: "$mobile",
           ticketId: "$complaints.complaintId",
+          complaintId: "$complaints.complaintId", // Fallback
           type: "$complaints.type",
           priority: "$complaints.priority",
           status: "$complaints.status",
@@ -307,6 +311,10 @@ export const updateComplaintStatus = async (req, res) => {
     const { ticketId } = req.params;
     const { status, resolutionNotes, assignedTechnician, priority } = req.body;
 
+    if (!ticketId || ticketId === "undefined") {
+      return res.status(400).json({ message: "Invalid Ticket ID" });
+    }
+
     // Use positional operator $ to update the specific element in array
     const query = { "complaints.complaintId": ticketId };
     const updateFields = {};
@@ -324,6 +332,49 @@ export const updateComplaintStatus = async (req, res) => {
 
     if (!customer) {
       return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    // SYNC TO USER AMC IF APPLICABLE
+    try {
+      const updateObj = {};
+      if (assignedTechnician) updateObj["serviceHistory.$.technicianName"] = assignedTechnician;
+      if (resolutionNotes) updateObj["serviceHistory.$.notes"] = resolutionNotes;
+
+      if (Object.keys(updateObj).length > 0) {
+        await UserAmc.findOneAndUpdate(
+          { "serviceHistory.complaintId": ticketId },
+          { $set: updateObj }
+        );
+      }
+    } catch (syncErr) {
+      console.error("Failed to sync status to UserAmc:", syncErr);
+    }
+
+    // CREATE NOTIFICATION FOR USER
+    try {
+      const userRecord = await User.findOne({ $or: [{ phone: customer.mobile }, { email: customer.email }] });
+      if (userRecord) {
+        let title = "Update on your service request";
+        let message = `Your request ${ticketId} status is now ${status || 'updated'}.`;
+        
+        if (assignedTechnician) {
+            title = "Technician Assigned";
+            message = `Technician ${assignedTechnician} has been assigned to your request ${ticketId}.`;
+        } else if (status === "Resolved") {
+            title = "Request Resolved";
+            message = `Your service request ${ticketId} has been marked as resolved.`;
+        }
+
+        await UserNotification.create({
+          userId: userRecord._id,
+          title,
+          message,
+          type: "Service",
+          refId: ticketId
+        });
+      }
+    } catch (notifErr) {
+      console.error("Failed to create user notification:", notifErr);
     }
 
     res.json({ message: "Complaint updated successfully", customer });

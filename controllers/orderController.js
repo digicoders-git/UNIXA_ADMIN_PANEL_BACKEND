@@ -5,6 +5,9 @@ import RoPart from "../models/RoPart.js";
 import Offer from "../models/Offer.js";
 import Customer from "../models/Customer.js";
 import User from "../models/User.js";
+import UserAmc from "../models/UserAmc.js";
+import AmcPlan from "../models/AmcPlan.js";
+import mongoose from "mongoose";
 
 const applyOffer = (offer, subtotal) => {
   if (!offer) return { discount: 0, total: subtotal };
@@ -125,6 +128,83 @@ export const placeOrder = async (req, res) => {
       notes,
     });
 
+    // ========== AUTO-ACTIVATE AMC PLANS FOR USER PANEL ==========
+    try {
+      console.log('🔄 Starting AMC auto-activation for order:', order._id);
+      console.log('📦 Total items in order:', order.items.length);
+      
+      // We need populated products/roParts to get their amcPlans
+      const fullProducts = products; 
+      const fullRoParts = roParts;   
+
+      for (const item of order.items) {
+        console.log(`\n🔍 Checking item: ${item.productName} (${item.product})`);
+        console.log(`   Type: ${item.productType}`);
+
+        // Find the full product/part data with amcPlans
+        let data = null;
+        if (item.productType === 'RoPart') {
+          data = fullRoParts.find(p => String(p._id) === String(item.product));
+          console.log(`   → Looked in RoParts, found data? ${!!data}`);
+        } else {
+          data = fullProducts.find(p => String(p._id) === String(item.product));
+          console.log(`   → Looked in Products, found data? ${!!data}`);
+        }
+
+        if (!data) {
+          console.log(`   ⚠️ Data not found for ${item.productName}`);
+          continue;
+        }
+
+        console.log(`   AMC Plans Array Length: ${data.amcPlans?.length || 0}`);
+        if (!data.amcPlans || data.amcPlans.length === 0) continue;
+
+        // Fetch full AMC plan details
+        console.log(`   → Fetching AMC Plan details for IDs:`, data.amcPlans);
+        const amcPlans = await AmcPlan.find({ 
+          _id: { $in: data.amcPlans }, 
+          isActive: true 
+        });
+
+        console.log(`   ✅ Found ${amcPlans.length} active AMC plans details`);
+
+        for (const plan of amcPlans) {
+          console.log(`   🚀 Activating Plan: ${plan.name}`);
+          const startDate = new Date();
+          const endDate = new Date();
+          endDate.setMonth(endDate.getMonth() + (plan.durationMonths || 12));
+
+          const userAmcRes = await UserAmc.create({
+            userId: userId,
+            orderId: order._id,
+            productId: data._id,
+            productType: item.productType || 'Product',
+            productName: data.name,
+            productImage: data.mainImage?.url || data.img || '',
+            amcPlanId: plan._id,
+            amcPlanName: plan.name,
+            amcPlanPrice: plan.price,
+            durationMonths: plan.durationMonths || 12,
+            startDate,
+            endDate,
+            servicesTotal: plan.servicesIncluded || 4,
+            servicesUsed: 0,
+            partsIncluded: plan.partsIncluded || false,
+            status: 'Active',
+            paymentStatus: 'Paid',
+            amountPaid: plan.price,
+            notes: `Auto-activated from order #${order._id}`
+          });
+          console.log(`   ✅ AMC Record Created: ${userAmcRes._id}`);
+        }
+      }
+      console.log('🏁 AMC auto-activation sequence finished');
+    } catch (amcError) {
+      console.error("❌ AMC Auto-activation failed:", amcError.message);
+      console.error(amcError.stack);
+    }
+    // ========== END AMC AUTO-ACTIVATION ==========
+
     // Sync with Customer Database
     try {
       const user = await User.findById(userId);
@@ -228,7 +308,14 @@ export const updateOrderStatus = async (req, res) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found" });
 
-    if (status) order.status = status;
+    if (status) {
+        order.status = status;
+        // set timestamps
+        if (status === 'confirmed' && !order.confirmedAt) order.confirmedAt = new Date();
+        if (status === 'shipped' && !order.shippedAt) order.shippedAt = new Date();
+        if (status === 'delivered' && !order.deliveredAt) order.deliveredAt = new Date();
+        if (status === 'cancelled' && !order.cancelledAt) order.cancelledAt = new Date();
+    }
     if (paymentStatus) order.paymentStatus = paymentStatus;
 
     await order.save();

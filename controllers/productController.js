@@ -15,8 +15,34 @@ const parseMaybeJSON = (value, fallback) => {
   try {
     return JSON.parse(value);
   } catch {
-    // Return the string as-is if it's not JSON, or try fallback
     return typeof value === "string" && value.length > 0 ? value : fallback;
+  }
+};
+
+const parseAmcPlans = (val) => {
+  if (!val) return [];
+  try {
+    let p = val;
+    if (typeof p === "string") {
+      try {
+        p = JSON.parse(p);
+      } catch (e1) {
+        // Not a JSON string, maybe a single ID?
+      }
+    }
+    // Deep check if it's still string like '["id"]'
+    if (typeof p === "string" && (p.startsWith("[") || p.startsWith("{"))) {
+       try { p = JSON.parse(p); } catch(e2) {}
+    }
+    const arr = Array.isArray(p) ? p : [p];
+    return arr.map(id => {
+       if (typeof id === "string" && id.length === 24 && mongoose.Types.ObjectId.isValid(id)) {
+          return new mongoose.Types.ObjectId(id);
+       }
+       return id?._id || id;
+    });
+  } catch (e) {
+    return [val];
   }
 };
 
@@ -39,7 +65,13 @@ export const createProduct = async (req, res) => {
       offerId,
       isActive,
       p_id,
+      amcPlans
     } = req.body;
+
+    console.log("DEBUG: createProduct Body:", req.body);
+    console.log("DEBUG: createProduct amcPlans received:", amcPlans);
+    const finalAmc = parseAmcPlans(amcPlans);
+    console.log("DEBUG: createProduct Parsed amcPlans:", finalAmc);
 
     if (!name || !price || !categoryId || !p_id) {
       return res
@@ -81,16 +113,20 @@ export const createProduct = async (req, res) => {
       specifications: parseMaybeJSON(specifications, {}),
       features: parseMaybeJSON(features, []),
       offer: offerId || null,
+      amcPlans: finalAmc,
       isActive: isActive === "false" ? false : true,
     });
 
-    res.status(201).json({ message: "Product created", product });
+    console.log("DEBUG: Product created with amcPlans:", product.amcPlans);
+
+    const populatedProduct = await Product.findById(product._id).populate("amcPlans");
+
+    res.status(201).json({ message: "Product created", product: populatedProduct });
   } catch (err) {
     console.error("createProduct error:", err);
     res.status(500).json({
       message: `Server error: ${err.message}`,
       error: err.message,
-      stack: process.env.NODE_ENV === "development" ? err.stack : undefined
     });
   }
 };
@@ -101,7 +137,7 @@ export const listProducts = async (req, res) => {
   try {
     const { all } = req.query;
     const match = all === "true" ? {} : { isActive: true };
-    const products = await Product.aggregate([
+    let products = await Product.aggregate([
       { $match: match },
       {
         $lookup: {
@@ -142,6 +178,8 @@ export const listProducts = async (req, res) => {
       { $sort: { createdAt: -1 } },
     ]);
 
+    await Product.populate(products, { path: "amcPlans" });
+
     res.json({ products });
   } catch (err) {
     console.error("listProducts error:", err);
@@ -161,13 +199,15 @@ export const getProduct = async (req, res) => {
       $or: [{ slug: idOrSlug }, { p_id: idOrSlug }] 
     })
       .populate("category", "name slug")
-      .populate("offer");
+      .populate("offer")
+      .populate("amcPlans");
 
     // Check _id if not found and valid ObjectId
     if (!product && mongoose.Types.ObjectId.isValid(idOrSlug)) {
       product = await Product.findById(idOrSlug)
         .populate("category", "name slug")
-        .populate("offer");
+        .populate("offer")
+        .populate("amcPlans");
     }
 
     if (!product) {
@@ -200,8 +240,8 @@ export const updateProduct = async (req, res) => {
   try {
     const { idOrSlug } = req.params;
 
-    let product = await Product.findOne({ 
-      $or: [{ slug: idOrSlug }, { p_id: idOrSlug }] 
+    let product = await Product.findOne({
+      $or: [{ slug: idOrSlug }, { p_id: idOrSlug }]
     });
 
     if (!product && mongoose.Types.ObjectId.isValid(idOrSlug)) {
@@ -227,9 +267,13 @@ export const updateProduct = async (req, res) => {
       features,
       offerId,
       p_id,
+      amcPlans,
     } = req.body;
 
-    // 🔥 SAFE UPDATES (JSON OR FORM DATA)
+    console.log("DEBUG: updateProduct ID:", idOrSlug);
+    console.log("DEBUG: updateProduct Body:", req.body);
+    console.log("DEBUG: updateProduct amcPlans received:", amcPlans);
+
     if (p_id) product.p_id = p_id;
     if (name) product.name = name;
     if (price !== undefined) product.price = Number(price);
@@ -267,7 +311,12 @@ export const updateProduct = async (req, res) => {
 
     if (offerId !== undefined) product.offer = offerId || null;
 
-    /* ===== IMAGE UPDATE ===== */
+    if (amcPlans !== undefined) {
+      const finalAmcToUpdate = parseAmcPlans(amcPlans);
+      console.log("DEBUG: updateProduct Final amcPlans to save:", finalAmcToUpdate);
+      product.amcPlans = finalAmcToUpdate;
+      product.markModified("amcPlans");
+    }
 
     if (req.files?.mainImage?.[0]) {
       if (product.mainImage?.publicId) {
@@ -292,15 +341,11 @@ export const updateProduct = async (req, res) => {
     }
 
     await product.save();
+    console.log("DEBUG: Product saved with amcPlans:", product.amcPlans);
     res.json({ message: "Product updated", product });
   } catch (err) {
     console.error("updateProduct error:", err);
-    res.status(500).json({ 
-      message: `Internal server error: ${err.message}`, 
-      error: err.message,
-      stack: process.env.NODE_ENV === "development" ? err.stack : undefined 
-    });
-
+    res.status(500).json({ message: `Internal server error: ${err.message}` });
   }
 };
 

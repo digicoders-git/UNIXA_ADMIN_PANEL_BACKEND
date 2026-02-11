@@ -73,6 +73,12 @@ const orderSchema = new mongoose.Schema(
 
     shippingAddress: { type: addressSchema, required: true },
     notes: { type: String, default: "" },
+
+    // Status timestamps for timeline
+    confirmedAt: { type: Date },
+    shippedAt: { type: Date },
+    deliveredAt: { type: Date },
+    cancelledAt: { type: Date },
   },
   { timestamps: true }
 );

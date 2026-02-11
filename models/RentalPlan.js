@@ -35,6 +35,20 @@ const rentalPlanSchema = new mongoose.Schema(
       type: String,
       default: "Monthly",
     },
+    amcPlans: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AmcPlan",
+      },
+    ],
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+    },
+    description: {
+      type: String,
+      default: "",
+    },
     isActive: {
       type: Boolean,
       default: true,

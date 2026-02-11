@@ -2,31 +2,22 @@ import mongoose from "mongoose";
 import Order from "../models/Order.js";
 import User from "../models/User.js";
 import Customer from "../models/Customer.js";
+import UserAmc from "../models/UserAmc.js";
 import moment from "moment-timezone";
 
 // Helper to find linked customer (Robust logic)
 const findLinkedCustomer = async (userId) => {
   const user = await User.findById(userId);
-  if (!user) return null;
+  if (!user || !user.phone) return { user, customer: null };
 
-  // Try to find customer by various means
-  const searchValues = [];
-  if (user.phone) {
-      searchValues.push({ mobile: user.phone });
-      // Also try last 10 digits if possible
-      const last10 = user.phone.replace(/\D/g, '').slice(-10);
-      if (last10.length === 10) {
-          searchValues.push({ mobile: { $regex: last10, $options: 'i' } });
-      }
-  }
-  if (user.email) {
-      searchValues.push({ email: { $regex: `^${user.email}$`, $options: 'i' } });
-  }
-
-  let customer = null;
-  if(searchValues.length > 0) {
-      customer = await Customer.findOne({ $or: searchValues });
-  }
+  // Normalize phone (last 10 digits) for robust matching
+  const normalizedPhone = user.phone.replace(/\D/g, "").slice(-10);
+  const customer = await Customer.findOne({ 
+    $or: [
+        { mobile: new RegExp(normalizedPhone + "$") },
+        { email: { $regex: `^${user.email}$`, $options: 'i' } }
+    ]
+  });
 
   return { user, customer };
 };
@@ -70,7 +61,7 @@ export const getUserDashboardStats = async (req, res) => {
       .limit(5)
       .select("orderId items total status createdAt");
 
-    // 4. AMC Status
+    // 4. AMC Status (Check UserAmc model FIRST, then Customer fallback)
     let amcStatus = {
         active: false,
         planName: "No Active Plan",
@@ -78,28 +69,35 @@ export const getUserDashboardStats = async (req, res) => {
         status: "Inactive"
     };
 
-    if (customer && customer.amcDetails && customer.amcDetails.planName) {
+    // Check for web-purchased UserAmc first
+    const activeUserAmc = await UserAmc.findOne({ 
+        userId: userObjectId, 
+        status: 'Active' 
+    }).sort({ endDate: -1 });
+
+    if (activeUserAmc) {
+        amcStatus = {
+            active: true,
+            planName: activeUserAmc.amcPlanName,
+            expiry: moment(activeUserAmc.endDate).format("MMM DD, YYYY"),
+            status: "Active"
+        };
+    } else if (customer && customer.amcDetails && (customer.amcDetails.planName || customer.amcDetails.amcId)) {
+        // Fallback to Admin-managed Customer record
         const endDate = moment(customer.amcDetails.endDate);
         const now = moment();
-        
-        // Check if actually active (date check + status check)
-        const isDateActive = endDate.isAfter(now);
         const isStatusActive = customer.amcDetails.status === 'Active';
 
-        if (isDateActive && isStatusActive) {
+        if (isStatusActive) {
             amcStatus = {
                 active: true,
-                planName: customer.amcDetails.planName,
-                expiry: endDate.format("MMM DD, YYYY"),
+                planName: customer.amcDetails.planName || "Active AMC",
+                expiry: customer.amcDetails.endDate ? endDate.format("MMM DD, YYYY") : "Long-term",
                 status: "Active"
             };
-        } else if (!isDateActive) {
-             amcStatus.status = "Expired";
-             amcStatus.planName = customer.amcDetails.planName;
-             amcStatus.expiry = endDate.format("MMM DD, YYYY");
         } else {
-             amcStatus.status = customer.amcDetails.status; // e.g., Pending
-             amcStatus.planName = customer.amcDetails.planName;
+             amcStatus.status = customer.amcDetails.status || "Inactive";
+             amcStatus.planName = customer.amcDetails.planName || "No Active Plan";
         }
     }
 
@@ -113,31 +111,45 @@ export const getUserDashboardStats = async (req, res) => {
             title: `Order #${(order.orderId || order._id.toString().slice(-6)).toUpperCase()}`,
             date: order.createdAt,
             status: order.status,
-            amount: order.total
+            amount: order.total,
+            refId: order.orderId || order._id
         });
     });
 
     // Add complaints/service to activity
     if (customer && customer.complaints && customer.complaints.length > 0) {
-        // Sort complaints desc
-        const sortedComplaints = [...customer.complaints].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
-        
-        sortedComplaints.forEach(comp => {
+        customer.complaints.forEach(comp => {
             activities.push({
                 type: 'service',
                 title: `Service: ${comp.type}`,
                 date: comp.date,
                 status: comp.status,
-                desc: comp.description
+                desc: comp.description,
+                refId: comp.complaintId
             });
         });
     }
 
+    // Add service history from UserAmc
+    const userAmcs = await UserAmc.find({ userId: userObjectId });
+    userAmcs.forEach(uamc => {
+        if (uamc.serviceHistory && uamc.serviceHistory.length > 0) {
+            uamc.serviceHistory.forEach(svc => {
+                activities.push({
+                    type: 'service',
+                    title: `Visit: ${svc.type}`,
+                    date: svc.date,
+                    status: 'resolved'
+                });
+            });
+        }
+    });
+
     // Sort combined activity by date desc
     activities.sort((a, b) => new Date(b.date) - new Date(a.date));
-    activities = activities.slice(0, 5); // Keep top 5
+    activities = activities.slice(0, 5); // Show only top 5 on dashboard as requested
 
-    // 6. Rental Status
+    // 6. Rental Status (Priority: UserAmc with RentalPlan tag, fallback: admin Customer record)
     let rentalStatus = {
         active: false,
         planName: "No Active Rental",
@@ -145,26 +157,34 @@ export const getUserDashboardStats = async (req, res) => {
         expiry: null
     };
 
-    if (customer && customer.rentalDetails && customer.rentalDetails.planName) {
-        const endDate = moment(customer.rentalDetails.endDate);
+    // Check if user has an active Rental but as a web purchase
+    const webRental = await UserAmc.findOne({ 
+        userId: userObjectId, 
+        status: 'Active',
+        productType: 'RentalPlan'
+    }).sort({ endDate: -1 });
+
+    if (webRental) {
+        rentalStatus = {
+            active: true,
+            planName: webRental.productName,
+            status: "Active",
+            expiry: moment(webRental.endDate).format("MMM DD, YYYY")
+        };
+    } else if (customer && customer.rentalDetails && (customer.rentalDetails.planName || customer.rentalDetails.machineModel)) {
         const now = moment();
-        const isDateActive = endDate.isAfter(now);
         const isStatusActive = customer.rentalDetails.status === 'Active';
 
-        if (isDateActive && isStatusActive) {
+        if (isStatusActive) {
             rentalStatus = {
                 active: true,
-                planName: customer.rentalDetails.planName,
+                planName: customer.rentalDetails.planName || customer.rentalDetails.machineModel || "Active Rental",
                 status: "Active",
-                expiry: endDate.format("MMM DD, YYYY")
+                expiry: customer.rentalDetails.nextDueDate ? moment(customer.rentalDetails.nextDueDate).format("MMM DD, YYYY") : "Next Due: N/A"
             };
-        } else if (!isDateActive) {
-            rentalStatus.status = "Expired";
-            rentalStatus.planName = customer.rentalDetails.planName;
-            rentalStatus.expiry = endDate.format("MMM DD, YYYY");
         } else {
-            rentalStatus.status = customer.rentalDetails.status;
-            rentalStatus.planName = customer.rentalDetails.planName;
+            rentalStatus.status = customer.rentalDetails.status || "Inactive";
+            rentalStatus.planName = customer.rentalDetails.planName || customer.rentalDetails.machineModel || "No Active Rental";
         }
     }
 

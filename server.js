@@ -38,6 +38,7 @@ import rentalPlanRoutes from "./routes/rentalPlanRoutes.js";
 import userDashboardRoutes from "./routes/userDashboardRoutes.js";
 import userRentalRoutes from "./routes/userRentalRoutes.js";
 import userServiceRequestRoutes from "./routes/userServiceRequestRoutes.js";
+import userAmcRoutes from "./routes/userAmcRoutes.js";
 
 const app = express();
 
@@ -134,6 +135,7 @@ app.use("/api/rental-plans", rentalPlanRoutes);
 app.use("/api/user-dashboard", userDashboardRoutes);
 app.use("/api/user-rentals", userRentalRoutes);
 app.use("/api/service-requests", userServiceRequestRoutes);
+app.use("/api/my-amcs", userAmcRoutes);
 
 
 

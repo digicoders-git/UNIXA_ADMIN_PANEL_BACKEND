@@ -2,8 +2,10 @@
 import Order from "../models/Order.js";
 import Cart from "../models/Cart.js";
 import Product from "../models/Product.js";
+import RoPart from "../models/RoPart.js";
 import Offer from "../models/Offer.js";
 import User from "../models/User.js";
+import UserAmc from "../models/UserAmc.js";
 
 // Place Order
 export const placeOrder = async (req, res) => {
@@ -107,6 +109,98 @@ export const placeOrder = async (req, res) => {
     cart.totalItems = 0;
     cart.totalAmount = 0;
     await cart.save();
+
+    // ========== AUTO-ACTIVATE AMC PLANS ==========
+    try {
+      console.log('🔄 Starting AMC auto-activation for order:', order._id);
+      console.log('📦 Order items count:', order.items.length);
+      console.log('📋 Order items:', JSON.stringify(order.items, null, 2));
+      
+      for (const item of order.items) {
+        console.log(`\n🔍 Processing item:`, item.product);
+        console.log(`   Product Type:`, item.productType || 'Product (default)');
+        
+        // Fetch full product/RO part details with populated AMC plans
+        let productData = null;
+        
+        if (item.productType === 'RoPart') {
+          console.log('   → Fetching RoPart...');
+          productData = await RoPart.findById(item.product).populate('amcPlans');
+        } else {
+          console.log('   → Fetching Product...');
+          productData = await Product.findById(item.product).populate('amcPlans');
+        }
+        
+        if (!productData) {
+          console.log(`⚠️  Product not found for item:`, item.product);
+          continue;
+        }
+        
+        console.log(`   ✅ Product found:`, productData.name);
+        console.log(`   AMC Plans:`, productData.amcPlans?.length || 0);
+        
+        // Check if product has AMC plans
+        if (!productData.amcPlans || productData.amcPlans.length === 0) {
+          console.log(`ℹ️  No AMC plans for product:`, productData.name);
+          continue;
+        }
+        
+        // Filter only active AMC plans
+        const activePlans = productData.amcPlans.filter(plan => 
+          plan && plan.isActive !== false
+        );
+        
+        if (activePlans.length === 0) {
+          console.log(`ℹ️  No active AMC plans for product:`, productData.name);
+          continue;
+        }
+        
+        console.log(`✅ Found ${activePlans.length} active AMC plan(s) for:`, productData.name);
+        
+        // Create UserAmc entry for each active plan
+        for (const plan of activePlans) {
+          const startDate = new Date();
+          const endDate = new Date();
+          endDate.setMonth(endDate.getMonth() + (plan.durationMonths || 12));
+          
+          const userAmcData = {
+            userId: req.user.sub,
+            orderId: order._id,
+            productId: productData._id,
+            productType: item.productType || 'Product',
+            productName: productData.name,
+            productImage: productData.mainImage?.url || productData.img || '',
+            amcPlanId: plan._id,
+            amcPlanName: plan.name,
+            amcPlanPrice: plan.price,
+            durationMonths: plan.durationMonths || 12,
+            startDate,
+            endDate,
+            servicesTotal: plan.servicesIncluded || 4,
+            servicesUsed: 0,
+            partsIncluded: plan.partsIncluded || false,
+            status: 'Active',
+            paymentStatus: 'Paid',
+            amountPaid: plan.price,
+            notes: `Auto-activated from order #${order._id}`
+          };
+          
+          const userAmc = await UserAmc.create(userAmcData);
+          console.log(`✅ AMC activated:`, {
+            plan: plan.name,
+            product: productData.name,
+            expiry: endDate.toLocaleDateString('en-IN')
+          });
+        }
+      }
+      
+      console.log('✅ AMC auto-activation completed successfully');
+    } catch (amcError) {
+      console.error('❌ AMC activation error:', amcError);
+      // Don't fail the order if AMC activation fails
+      // Just log the error and continue
+    }
+    // ========== END AMC AUTO-ACTIVATION ==========
 
     res.status(201).json({ 
       message: "Order placed successfully", 
