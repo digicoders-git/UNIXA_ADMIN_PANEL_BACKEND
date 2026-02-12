@@ -56,7 +56,8 @@ const allowedOrigins = [
   "http://localhost:5180",
   "https://Unixa-kappa.vercel.app",
   "https://unixa-admin-panel.vercel.app",
-  "https://unixa-website.vercel.app"
+  "https://unixa-website.vercel.app",
+  "https://unixa-user-panel.vercel.app"
 
 ].filter(Boolean);
 
