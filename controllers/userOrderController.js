@@ -110,95 +110,82 @@ export const placeOrder = async (req, res) => {
     cart.totalAmount = 0;
     await cart.save();
 
-    // ========== AUTO-ACTIVATE AMC PLANS ==========
+    // ========== AUTO-ACTIVATE AMC PLANS & POPULATE ORDER DETAILS ==========
     try {
-      console.log('🔄 Starting AMC auto-activation for order:', order._id);
-      console.log('📦 Order items count:', order.items.length);
-      console.log('📋 Order items:', JSON.stringify(order.items, null, 2));
+      console.log('🔄 Starting AMC auto-activation and order enrichment:', order._id);
       
-      for (const item of order.items) {
-        console.log(`\n🔍 Processing item:`, item.product);
-        console.log(`   Product Type:`, item.productType || 'Product (default)');
+      const updatedItems = [...order.items];
+      let orderModified = false;
+
+      for (let i = 0; i < updatedItems.length; i++) {
+        const item = updatedItems[i];
         
-        // Fetch full product/RO part details with populated AMC plans
+        // Generate a stable Warranty ID for every item
+        const timestamp = Date.now().toString().slice(-6);
+        const random = Math.floor(1000 + Math.random() * 9000);
+        item.warrantyId = `WAR${timestamp}${random}`;
+        item.warrantyExpiry = moment().add(1, 'year').toDate(); // Default 1 year warranty
+        orderModified = true;
+
+        // Fetch full product/RO part details
         let productData = null;
-        
         if (item.productType === 'RoPart') {
-          console.log('   → Fetching RoPart...');
           productData = await RoPart.findById(item.product).populate('amcPlans');
         } else {
-          console.log('   → Fetching Product...');
           productData = await Product.findById(item.product).populate('amcPlans');
         }
         
-        if (!productData) {
-          console.log(`⚠️  Product not found for item:`, item.product);
-          continue;
-        }
+        if (!productData || !productData.amcPlans || productData.amcPlans.length === 0) continue;
         
-        console.log(`   ✅ Product found:`, productData.name);
-        console.log(`   AMC Plans:`, productData.amcPlans?.length || 0);
+        const activePlans = productData.amcPlans.filter(plan => plan && plan.isActive !== false);
+        if (activePlans.length === 0) continue;
         
-        // Check if product has AMC plans
-        if (!productData.amcPlans || productData.amcPlans.length === 0) {
-          console.log(`ℹ️  No AMC plans for product:`, productData.name);
-          continue;
-        }
+        // Use the first active plan for order item details
+        const plan = activePlans[0];
+        item.amcPlan = plan.name;
         
-        // Filter only active AMC plans
-        const activePlans = productData.amcPlans.filter(plan => 
-          plan && plan.isActive !== false
-        );
-        
-        if (activePlans.length === 0) {
-          console.log(`ℹ️  No active AMC plans for product:`, productData.name);
-          continue;
-        }
-        
-        console.log(`✅ Found ${activePlans.length} active AMC plan(s) for:`, productData.name);
-        
-        // Create UserAmc entry for each active plan
-        for (const plan of activePlans) {
+        // Generate AMC Ref (AMC ID)
+        const amcRef = `AMC${timestamp}${Math.floor(Math.random() * 1000)}`;
+        item.amcId = amcRef;
+
+        // Create UserAmc entry for each active plan (Original logic)
+        for (const p of activePlans) {
           const startDate = new Date();
-          const endDate = new Date();
-          endDate.setMonth(endDate.getMonth() + (plan.durationMonths || 12));
+          const endDate = moment().add(p.durationMonths || 12, 'months').toDate();
           
-          const userAmcData = {
+          await UserAmc.create({
             userId: req.user.sub,
             orderId: order._id,
             productId: productData._id,
             productType: item.productType || 'Product',
             productName: productData.name,
             productImage: productData.mainImage?.url || productData.img || '',
-            amcPlanId: plan._id,
-            amcPlanName: plan.name,
-            amcPlanPrice: plan.price,
-            durationMonths: plan.durationMonths || 12,
+            amcPlanId: p._id,
+            amcPlanName: p.name,
+            amcPlanPrice: p.price,
+            durationMonths: p.durationMonths || 12,
             startDate,
             endDate,
-            servicesTotal: plan.servicesIncluded || 4,
+            servicesTotal: p.servicesIncluded || 4,
             servicesUsed: 0,
-            partsIncluded: plan.partsIncluded || false,
+            partsIncluded: p.partsIncluded || false,
             status: 'Active',
             paymentStatus: 'Paid',
-            amountPaid: plan.price,
-            notes: `Auto-activated from order #${order._id}`
-          };
-          
-          const userAmc = await UserAmc.create(userAmcData);
-          console.log(`✅ AMC activated:`, {
-            plan: plan.name,
-            product: productData.name,
-            expiry: endDate.toLocaleDateString('en-IN')
+            amountPaid: p.price,
+            notes: `Auto-activated from order #${order._id}`,
+            amcId: amcRef // Linking them
           });
         }
       }
       
-      console.log('✅ AMC auto-activation completed successfully');
+      if (orderModified) {
+        order.items = updatedItems;
+        await order.save();
+      }
+      
+      console.log('✅ AMC auto-activation and order enrichment completed');
     } catch (amcError) {
       console.error('❌ AMC activation error:', amcError);
-      // Don't fail the order if AMC activation fails
-      // Just log the error and continue
     }
     // ========== END AMC AUTO-ACTIVATION ==========
 
@@ -281,16 +268,57 @@ export const cancelOrder = async (req, res) => {
 
     if (!order) return res.status(404).json({ message: "Order not found" });
 
+    // Allow cancellation only if pending
     if (order.status !== "pending") {
-      return res.status(400).json({ message: "Order cannot be cancelled" });
+      return res.status(400).json({ message: "Order cannot be cancelled in current status" });
     }
 
     order.status = "cancelled";
+    order.cancelledAt = new Date();
     await order.save();
+
+    // Also cancel any auto-activated AMCs for this order
+    await UserAmc.updateMany(
+      { orderId: order._id },
+      { $set: { status: 'Cancelled', notes: 'Order cancelled by user' } }
+    );
 
     res.json({ message: "Order cancelled successfully", order });
   } catch (err) {
     console.error("cancelOrder error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Return Order
+export const returnOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = await Order.findOne({ 
+      _id: orderId, 
+      userId: req.user.sub 
+    });
+
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    // Allow return only if delivered
+    if (order.status !== "delivered") {
+      return res.status(400).json({ message: "Order can only be returned after delivery" });
+    }
+
+    order.status = "returned";
+    await order.save();
+
+    // Also cancel any auto-activated AMCs for this order if product is returned
+    await UserAmc.updateMany(
+      { orderId: order._id },
+      { $set: { status: 'Cancelled', notes: 'Product returned by user' } }
+    );
+
+    res.json({ message: "Order return initiated", order });
+  } catch (err) {
+    console.error("returnOrder error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

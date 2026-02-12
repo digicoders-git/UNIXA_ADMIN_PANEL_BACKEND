@@ -2,6 +2,8 @@
 import Customer from "../models/Customer.js";
 import User from "../models/User.js";
 import UserAmc from "../models/UserAmc.js";
+import RentalPlan from "../models/RentalPlan.js";
+import Product from "../models/Product.js";
 import moment from "moment-timezone";
 
 // Helper to find linked customer (Robust logic matching Dashboard)
@@ -11,15 +13,12 @@ const findLinkedCustomer = async (userId) => {
 
   const query = [];
   
-  // 1. Match by Phone (Fuzzy match for last 10 digits)
+  // 1. Match by Phone (Cleaned last 10 digits)
   if (user.phone) {
-    const normalizedPhone = user.phone.replace(/\D/g, "").slice(-10);
-    if (normalizedPhone.length === 10) {
-      // Create a fuzzy regex: e.g. "1234567890" -> /1[^0-9]*2[^0-9]*3...0$/
-      const fuzzyPattern = normalizedPhone.split("").join("[^0-9]*") + "$";
+    const cleanUserPhone = user.phone.replace(/\D/g, "").slice(-10);
+    if (cleanUserPhone.length === 10) {
+      const fuzzyPattern = cleanUserPhone.split("").join("[^0-9]*") + "$";
       query.push({ mobile: { $regex: fuzzyPattern } });
-    } else {
-      query.push({ mobile: new RegExp(user.phone.replace(/\D/g, "") + "$") });
     }
   }
 
@@ -30,7 +29,10 @@ const findLinkedCustomer = async (userId) => {
 
   if (query.length === 0) return { user, customer: null };
 
-  const customer = await Customer.findOne({ $or: query });
+  const customer = await Customer.findOne({ $or: query })
+    .sort({ updatedAt: -1 })
+    .populate('rentalDetails.planId');
+    
   return { user, customer };
 };
 
@@ -39,12 +41,12 @@ export const getUserRentalDetails = async (req, res) => {
     const userId = req.user.sub;
     const { customer } = await findLinkedCustomer(userId);
 
-    // 1. Check for web-purchased Rental in UserAmc first (Priority)
+    // 1. Priority: Web-purchased items in UserAmc
     const webRental = await UserAmc.findOne({ 
         userId, 
-        status: 'Active',
+        status: { $in: ['Active', 'Pending'] },
         productType: 'RentalPlan'
-    }).sort({ endDate: -1 });
+    }).sort({ createdAt: -1 });
 
     if (webRental) {
       return res.json({ 
@@ -53,7 +55,7 @@ export const getUserRentalDetails = async (req, res) => {
           status: webRental.status,
           startDate: webRental.startDate,
           endDate: webRental.endDate,
-          nextDueDate: webRental.endDate, // Use end date as next due for web items
+          nextDueDate: webRental.endDate || moment(webRental.startDate).add(1, 'month').toDate(),
           amount: webRental.amcPlanPrice,
           machineModel: webRental.productName,
           machineImage: webRental.productImage
@@ -62,30 +64,63 @@ export const getUserRentalDetails = async (req, res) => {
       });
     }
 
-    // 2. Admin-managed Customer record
+    // 2. Admin/Inquiry-managed Customer record
     if (customer) {
-        // Option A: Explicit Rental Details
-        if (customer.rentalDetails && customer.rentalDetails.status !== "Inactive") {
-            return res.json({ 
-               rental: customer.rentalDetails,
-               amc: customer.amcDetails 
-            });
+        let rentalData = null;
+
+        // Extremely Loose Check: Show if there's ANY rental data or if the customer is not Cancelled
+        const hasRentalDetails = customer.rentalDetails && customer.rentalDetails.status !== "Cancelled";
+        const isNotCancelled = customer.status !== "Cancelled";
+
+        if (hasRentalDetails && (customer.rentalDetails.planName || customer.rentalDetails.machineModel || customer.rentalDetails.status !== "Inactive")) {
+            rentalData = { ...customer.rentalDetails.toObject() };
+        } else if (isNotCancelled) {
+            // Fallback for customers who might just be marked Active/Existing/Pending without full rental fields
+            const unit = (customer.purifiers && customer.purifiers.length > 0) ? customer.purifiers[0] : null;
+            rentalData = {
+                planName: customer.rentalDetails?.planName || "Active Rental",
+                machineModel: unit ? `${unit.brand} ${unit.model}` : (customer.rentalDetails?.machineModel || "Water Purifier"),
+                status: customer.rentalDetails?.status || customer.status || "Active",
+                startDate: unit?.installationDate || customer.createdAt,
+                amount: customer.rentalDetails?.amount || 0,
+                paymentStatus: "Payment Pending",
+                machineImage: ""
+            };
         }
 
-        // Option B: Fallback - If customer is Active and has purifiers (Handles cases where admin only fills purifier list)
-        if (customer.status === "Active" && customer.purifiers && customer.purifiers.length > 0) {
-            const firstUnit = customer.purifiers[0];
-            return res.json({
-                rental: {
-                    planName: "Active Rental Subscription",
-                    machineModel: `${firstUnit.brand} ${firstUnit.model}`.trim() || "RO System",
-                    status: "Active",
-                    startDate: firstUnit.installationDate || customer.createdAt,
-                    amount: customer.rentalDetails?.amount || 0,
-                    paymentStatus: "Paid",
-                    machineImage: "" // Placeholder
-                },
-                amc: customer.amcDetails
+        if (rentalData) {
+            // ENRICHMENT
+            const modelSearch = rentalData.machineModel || "";
+            const planSearch = rentalData.planName || "";
+
+            const linkedPlan = customer.rentalDetails?.planId || await RentalPlan.findOne({ 
+                $or: [
+                    { planName: new RegExp(planSearch, 'i') },
+                    { planName: new RegExp(modelSearch, 'i') },
+                    { planName: { $regex: modelSearch.split(' ').pop() || 'RO', $options: 'i' } }
+                ]
+            });
+
+            const productData = (!rentalData.machineImage) ? await Product.findOne({
+                $or: [
+                    { name: new RegExp(modelSearch, 'i') },
+                    { name: { $regex: modelSearch.split(' ').pop() || 'RO', $options: 'i' } }
+                ]
+            }) : null;
+
+            rentalData.amount = rentalData.amount || linkedPlan?.price || 399;
+            rentalData.machineImage = rentalData.machineImage || linkedPlan?.image?.url || productData?.mainImage?.url || "";
+            if (rentalData.planName.includes("Request") && linkedPlan) rentalData.planName = linkedPlan.planName;
+
+            // Dates
+            rentalData.startDate = rentalData.startDate || customer.createdAt;
+            if (!rentalData.nextDueDate) {
+                rentalData.nextDueDate = moment(rentalData.startDate).add(1, 'month').toDate();
+            }
+
+            return res.json({ 
+                rental: rentalData,
+                amc: customer.amcDetails 
             });
         }
     }

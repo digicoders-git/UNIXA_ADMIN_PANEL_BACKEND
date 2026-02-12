@@ -15,6 +15,8 @@ const userAmcSchema = new mongoose.Schema(
       ref: "Order", 
       required: true 
     },
+
+    amcId: { type: String }, // Reference identity for the AMC
     
     productId: { 
       type: mongoose.Schema.Types.ObjectId, 

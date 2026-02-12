@@ -5,6 +5,7 @@ import {
   getUserOrders,
   getOrder,
   cancelOrder,
+  returnOrder,
   trackOrder
 } from "../controllers/userOrderController.js";
 import { authenticateUser } from "../middleware/userAuth.js";
@@ -18,6 +19,7 @@ router.post("/place", placeOrder);
 router.get("/", getUserOrders);
 router.get("/:orderId", getOrder);
 router.put("/:orderId/cancel", cancelOrder);
+router.put("/:orderId/return", returnOrder);
 router.get("/:orderId/track", trackOrder);
 
 export default router;
