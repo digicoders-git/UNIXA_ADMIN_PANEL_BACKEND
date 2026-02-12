@@ -214,19 +214,22 @@ export const verifyRentalPayment = async (req, res) => {
         let machineModel = "Unknown";
         let machineImage = "";
         
+        // Lookup Plan Logic
+        let resolvedPlanName = "Paid Rental Request";
         if (planId) {
-            try {
+             try {
                 const plan = await RentalPlan.findById(planId).populate('productId');
                 if (plan) {
                     machineModel = plan.productId?.name || plan.planName;
                     machineImage = plan.image?.url || plan.productId?.mainImage?.url;
+                    resolvedPlanName = plan.planName;
                 }
-            } catch (e) { console.error("Plan lookup failed", e); }
+            } catch (e) { console.error("Plan lookup failed", e);}
         }
 
         const rentalData = {
             planId: planId || null,
-            planName: "Paid Rental Request",
+            planName: resolvedPlanName,
             amount: amount || 0,
             status: "Pending",
             machineModel,
@@ -237,7 +240,22 @@ export const verifyRentalPayment = async (req, res) => {
         };
 
         if (customer) {
-            customer.rentalDetails = rentalData;
+            if (req.body.isMonthlyRent && customer.rentalDetails && customer.rentalDetails.status === 'Active') {
+                // Handle Monthly Rent Payment for Existing Active Customers
+                customer.rentalDetails.paymentStatus = "Paid";
+                customer.rentalDetails.paymentId = razorpay_payment_id;
+                
+                // Extend nextDueDate by 1 month
+                let currentDue = customer.rentalDetails.nextDueDate ? new Date(customer.rentalDetails.nextDueDate) : new Date();
+                // Ensure we don't set a date in the past if they are very late? 
+                // For simplicity, just add 30 days to the current due date or now if undefined
+                currentDue.setMonth(currentDue.getMonth() + 1);
+                customer.rentalDetails.nextDueDate = currentDue;
+                
+            } else {
+                // New Rental or Overwrite
+                customer.rentalDetails = rentalData;
+            }
             await customer.save();
         } else {
             await Customer.create({

@@ -120,7 +120,12 @@ export const getUserRentalDetails = async (req, res) => {
 
             return res.json({ 
                 rental: rentalData,
-                amc: customer.amcDetails 
+                amc: customer.amcDetails,
+                user: {
+                    name: customer.name,
+                    mobile: customer.mobile,
+                    email: customer.email
+                }
             });
         }
     }
