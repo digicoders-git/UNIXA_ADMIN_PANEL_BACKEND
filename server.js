@@ -99,9 +99,8 @@ app.use("/api/user/login", authLimiter);
 app.use("/api/users/login", authLimiter);
 app.use("/api/users/register", authLimiter);
 
-// 🟢 DB Connect (with India timezone logging)
-await connectDB();
-console.log("⏳ Timezone:", moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A"));
+// 🟢 DB Connection will be initialized in the server listen block below to prevent Render deployment timeouts
+
 
 // Routes
 app.use("/api/admin", adminRoutes);
@@ -171,8 +170,16 @@ app.use((err, _req, res, _next) => {
 // Server
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running on port ${PORT}`);
+  
+  // 🟢 Connect to Database after port binding
+  try {
+    await connectDB();
+    console.log("⏳ Timezone:", moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A"));
+  } catch (error) {
+    console.error("Startup Database Connection Failed:", error);
+  }
 });
 
 // Trigger restart for amc-plans
