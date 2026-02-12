@@ -170,5 +170,9 @@ app.use((err, _req, res, _next) => {
 
 // Server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server on :${PORT}`));
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
 // Trigger restart for amc-plans
