@@ -202,7 +202,7 @@ export const verifyRentalPayment = async (req, res) => {
       phone,
       subject,
       message: fullMessage,
-      status: "To be Answered"
+      status: "new"
     });
 
     // 2. Link to Customer (Rental Logic)

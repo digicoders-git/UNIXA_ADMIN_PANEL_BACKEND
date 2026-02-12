@@ -10,7 +10,8 @@ const rentalDetailsSchema = new mongoose.Schema({
   status: { type: String, enum: ["Active", "Inactive", "Pending", "Cancelled"], default: "Inactive" },
   paymentStatus: { type: String, enum: ["Paid", "Due", "Overdue"], default: "Paid" },
   machineModel: String,
-  machineImage: String
+  machineImage: String,
+  paymentId: String
 });
 
 const waterPurifierSchema = new mongoose.Schema({

@@ -1,0 +1,655 @@
+{
+	"info": {
+		"_postman_id": "unixa_backend_api",
+		"name": "Unixa Backend API",
+		"description": "API Documentation for Unixa Web Admin & User Panel Backend",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Admin",
+			"item": [
+				{
+					"name": "Create Admin",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"securepass\",\n    \"name\": \"Super Admin\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "create"]
+						}
+					}
+				},
+				{
+					"name": "Login Admin",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"securepass\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "login"]
+						}
+					}
+				},
+				{
+					"name": "List Admins (Auth)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/list",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "list"]
+						}
+					}
+				},
+				{
+					"name": "Logout All (Auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/logout-all",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "logout-all"]
+						}
+					}
+				},
+				{
+					"name": "Change Password (Auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"oldPassword\": \"oldpass\",\n    \"newPassword\": \"newpass\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/change-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "change-password"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Products",
+			"item": [
+				{
+					"name": "List Products",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/products",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products"]
+						}
+					}
+				},
+				{
+					"name": "Get Product",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/products/:idOrSlug",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products", ":idOrSlug"],
+							"variable": [
+								{
+									"key": "idOrSlug",
+									"value": "product-slug-or-id"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Product (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "New RO Product",
+									"type": "text"
+								},
+								{
+									"key": "price",
+									"value": "15000",
+									"type": "text"
+								},
+								{
+									"key": "images",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/products",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products"]
+						}
+					}
+				},
+				{
+					"name": "Update Product (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/products/:idOrSlug",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products", ":idOrSlug"],
+							"variable": [
+								{
+									"key": "idOrSlug",
+									"value": "product-id"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Delete Product (Admin)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/products/:idOrSlug",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products", ":idOrSlug"],
+							"variable": [
+								{
+									"key": "idOrSlug",
+									"value": "product-id"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Orders",
+			"item": [
+				{
+					"name": "Place Order (Public/User)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"userId\": \"USER_ID\",\n    \"items\": [\n        { \"productId\": \"PROD_ID\", \"quantity\": 1 }\n    ],\n    \"shippingAddress\": {\n        \"name\": \"John Doe\",\n        \"phone\": \"9876543210\",\n        \"addressLine1\": \"123 St\",\n        \"city\": \"City\",\n        \"pincode\": \"123456\"\n    },\n    \"paymentMethod\": \"COD\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/orders",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "orders"]
+						}
+					}
+				},
+				{
+					"name": "Place User Order (Auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+						"url": {
+							"raw": "{{baseUrl}}/api/user-orders/place",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "user-orders", "place"]
+						}
+					}
+				},
+				{
+					"name": "Get User Orders (Auth)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/user-orders",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "user-orders"]
+						}
+					}
+				},
+				{
+					"name": "Track Order (Auth)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/user-orders/:orderId/track",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "user-orders", ":orderId", "track"],
+							"variable": [
+								{
+									"key": "orderId",
+									"value": "ORDER_ID"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Test User\",\n    \"email\": \"user@test.com\",\n    \"password\": \"password123\",\n    \"phone\": \"9876543210\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "register"]
+						}
+					}
+				},
+				{
+					"name": "Login User",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@test.com\",\n    \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get Profile (Auth)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/profile",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "profile"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Payments",
+			"item": [
+				{
+					"name": "Create Order (Auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 500\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/create-order",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "create-order"]
+						}
+					}
+				},
+				{
+					"name": "Verify Payment (Auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"razorpay_order_id\": \"order_xxx\",\n    \"razorpay_payment_id\": \"pay_xxx\",\n    \"razorpay_signature\": \"xxx\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "verify"]
+						}
+					}
+				},
+				{
+					"name": "Verify Rental Payment (Auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"razorpay_order_id\": \"order_xxx\",\n    \"razorpay_payment_id\": \"pay_xxx\",\n    \"razorpay_signature\": \"xxx\",\n    \"planId\": \"PLAN_ID\",\n    \"amount\": 500\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/verify-rental",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "verify-rental"]
+						}
+					}
+				}
+			]
+		},
+        {
+            "name": "Cart",
+            "item": [
+                {
+                    "name": "Get Cart",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/cart",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "cart"]
+                        }
+                    }
+                },
+                {
+                    "name": "Add to Cart",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                             {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"productId\": \"PROD_ID\",\n    \"quantity\": 1\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/cart/add",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "cart", "add"]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Rentals",
+            "item": [
+                {
+                    "name": "Get Rental Plans",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/rental-plans",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "rental-plans"]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My Rentals (Users)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                             {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user-rentals",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "user-rentals"]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "AMCs",
+            "item": [
+                {
+                    "name": "Get AMC Plans",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/amc-plans",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "amc-plans"]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My AMCs (Auth)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                             {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                         "url": {
+                            "raw": "{{baseUrl}}/api/my-amcs",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "my-amcs"]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Service Requests",
+            "item": [
+                {
+                    "name": "Create Request (Auth)",
+                     "request": {
+                        "method": "POST",
+                        "header": [
+                             {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"serviceType\": \"Installation\",\n    \"description\": \"Need installation\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                         "url": {
+                            "raw": "{{baseUrl}}/api/service-requests",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "service-requests"]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My Requests (Auth)",
+                     "request": {
+                        "method": "GET",
+                        "header": [
+                             {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                         "url": {
+                            "raw": "{{baseUrl}}/api/service-requests",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "service-requests"]
+                        }
+                    }
+                }
+            ]
+        }
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5000",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
