@@ -6,14 +6,22 @@ const findLinkedCustomer = async (userId) => {
   const user = await User.findById(userId);
   if (!user) return null;
 
-  // Try to find customer by phone first (more unique identifier usually)
-  let customer = await Customer.findOne({ mobile: user.phone });
+  const query = [];
   
-  // If not found, try email
-  if (!customer && user.email) {
-    customer = await Customer.findOne({ email: user.email });
+  // 1. Match by Phone (Last 10 digits)
+  if (user.phone) {
+    const normalizedPhone = user.phone.replace(/\D/g, "").slice(-10);
+    query.push({ mobile: new RegExp(normalizedPhone + "$") });
   }
 
+  // 2. Match by Email
+  if (user.email) {
+    query.push({ email: { $regex: `^${user.email}$`, $options: 'i' } });
+  }
+
+  if (query.length === 0) return { user, customer: null };
+
+  const customer = await Customer.findOne({ $or: query });
   return { user, customer };
 };
 

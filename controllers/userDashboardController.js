@@ -8,17 +8,29 @@ import moment from "moment-timezone";
 // Helper to find linked customer (Robust logic)
 const findLinkedCustomer = async (userId) => {
   const user = await User.findById(userId);
-  if (!user || !user.phone) return { user, customer: null };
+  if (!user) return { user: null, customer: null };
 
-  // Normalize phone (last 10 digits) for robust matching
-  const normalizedPhone = user.phone.replace(/\D/g, "").slice(-10);
-  const customer = await Customer.findOne({ 
-    $or: [
-        { mobile: new RegExp(normalizedPhone + "$") },
-        { email: { $regex: `^${user.email}$`, $options: 'i' } }
-    ]
-  });
+  const query = [];
+  
+  // 1. Match by Phone (Fuzzy match for last 10 digits)
+  if (user.phone) {
+    const normalizedPhone = user.phone.replace(/\D/g, "").slice(-10);
+    if (normalizedPhone.length === 10) {
+      const fuzzyPattern = normalizedPhone.split("").join("[^0-9]*") + "$";
+      query.push({ mobile: { $regex: fuzzyPattern } });
+    } else {
+      query.push({ mobile: new RegExp(user.phone.replace(/\D/g, "") + "$") });
+    }
+  }
 
+  // 2. Match by Email
+  if (user.email) {
+    query.push({ email: { $regex: `^${user.email}$`, $options: 'i' } });
+  }
+
+  if (query.length === 0) return { user, customer: null };
+
+  const customer = await Customer.findOne({ $or: query });
   return { user, customer };
 };
 
@@ -171,20 +183,23 @@ export const getUserDashboardStats = async (req, res) => {
             status: "Active",
             expiry: moment(webRental.endDate).format("MMM DD, YYYY")
         };
-    } else if (customer && customer.rentalDetails && (customer.rentalDetails.planName || customer.rentalDetails.machineModel)) {
-        const now = moment();
-        const isStatusActive = customer.rentalDetails.status === 'Active';
-
-        if (isStatusActive) {
+    } else if (customer) {
+        if (customer.rentalDetails && customer.rentalDetails.status !== 'Inactive') {
             rentalStatus = {
                 active: true,
                 planName: customer.rentalDetails.planName || customer.rentalDetails.machineModel || "Active Rental",
-                status: "Active",
+                status: customer.rentalDetails.status,
                 expiry: customer.rentalDetails.nextDueDate ? moment(customer.rentalDetails.nextDueDate).format("MMM DD, YYYY") : "Next Due: N/A"
             };
-        } else {
-            rentalStatus.status = customer.rentalDetails.status || "Inactive";
-            rentalStatus.planName = customer.rentalDetails.planName || customer.rentalDetails.machineModel || "No Active Rental";
+        } else if (customer.status === 'Active' && customer.purifiers && customer.purifiers.length > 0) {
+            // Fallback for cases where admin only adds to purifier list
+            const firstUnit = customer.purifiers[0];
+            rentalStatus = {
+                active: true,
+                planName: "Active Rental Machine",
+                status: "Active",
+                expiry: firstUnit.installationDate ? moment(firstUnit.installationDate).add(1, 'month').format("MMM DD, YYYY") : "Renewing Monthly"
+            };
         }
     }
 
