@@ -4,13 +4,14 @@ import {
   createPaymentOrder,
   verifyPaymentAndCreateOrder,
   handlePaymentFailure,
+  verifyRentalPayment
 } from "../controllers/paymentController.js";
-import { requireAuth } from "../middleware/auth.js";
+import { authenticateUser } from "../middleware/userAuth.js";
 
 const router = express.Router();
 
 // All payment routes require authentication
-router.use(requireAuth);
+router.use(authenticateUser);
 
 // Create Razorpay order
 router.post("/create-order", createPaymentOrder);
@@ -20,5 +21,8 @@ router.post("/verify", verifyPaymentAndCreateOrder);
 
 // Handle payment failure
 router.post("/failure", handlePaymentFailure);
+
+// Verify rental payment
+router.post("/verify-rental", verifyRentalPayment);
 
 export default router;

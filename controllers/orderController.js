@@ -30,7 +30,7 @@ const applyOffer = (offer, subtotal) => {
 // PLACE ORDER (public)
 export const placeOrder = async (req, res) => {
   try {
-    const { userId, items, shippingAddress, offerCode, paymentMethod, notes } =
+    const { userId, items, shippingAddress, offerCode, paymentMethod, notes, razorpay_order_id, razorpay_payment_id, razorpay_signature } =
       req.body;
 
     console.log("Place Order Attempt:", { userId, itemsCount: items?.length });
@@ -124,8 +124,12 @@ export const placeOrder = async (req, res) => {
       total,
       offerCode: offer ? offer.code : undefined,
       paymentMethod: paymentMethod || "COD",
+      paymentStatus: razorpay_payment_id ? "paid" : "pending",
       shippingAddress,
       notes,
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature
     });
 
     // ========== AUTO-ACTIVATE AMC PLANS FOR USER PANEL ==========
