@@ -46,7 +46,7 @@ const addressSchema = new mongoose.Schema(
 
 const orderSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Removed required: true for offline support
     items: { type: [orderItemSchema], required: true },
 
     subtotal: { type: Number, required: true },
@@ -79,6 +79,8 @@ const orderSchema = new mongoose.Schema(
     shippedAt: { type: Date },
     deliveredAt: { type: Date },
     cancelledAt: { type: Date },
+
+    source: { type: String, default: "online" }, // Added source field
   },
   { timestamps: true }
 );
