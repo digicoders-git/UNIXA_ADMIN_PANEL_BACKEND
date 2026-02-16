@@ -40,7 +40,10 @@ import userRentalRoutes from "./routes/userRentalRoutes.js";
 import userServiceRequestRoutes from "./routes/userServiceRequestRoutes.js";
 import userAmcRoutes from "./routes/userAmcRoutes.js";
 
+import employeeDashboardRoutes from "./routes/employeeDashboardRoutes.js";
+
 const app = express();
+
 
 app.use(helmet());
 const allowedOrigins = [
@@ -136,10 +139,16 @@ app.use("/api/user-dashboard", userDashboardRoutes);
 app.use("/api/user-rentals", userRentalRoutes);
 app.use("/api/service-requests", userServiceRequestRoutes);
 app.use("/api/my-amcs", userAmcRoutes);
+// ... imports ...
+import managerDashboardRoutes from "./routes/managerDashboardRoutes.js";
+
+// ... other routes ...
+app.use("/api/employee-dashboard", employeeDashboardRoutes);
+app.use("/api/manager-dashboard", managerDashboardRoutes);
 
 
 
-// Default
+
 app.get("/", (_req, res) => res.send("✅ API is running..."));
 
 // Health check time in IST

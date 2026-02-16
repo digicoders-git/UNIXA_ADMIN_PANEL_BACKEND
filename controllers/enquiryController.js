@@ -6,16 +6,17 @@ import Product from "../models/Product.js";
 
 export const createEnquiry = async (req, res) => {
   try {
-    const { name, email, phone, subject, message } = req.body;
-    if (!name || !message) {
-      return res.status(400).json({ message: "name and message required" });
+    const { name, email, phone, subject, message, status } = req.body;
+    if (!name ) {
+      return res.status(400).json({ message: "name required" });
     }
     const enquiry = await Enquiry.create({
       name,
       email,
       phone,
       subject,
-      message,
+      message: message || "Generated from Manager Panel",
+      status: status ? status.toLowerCase() : 'new'
     });
 
     // Create Admin Notification
@@ -107,21 +108,40 @@ export const getEnquiry = async (req, res) => {
   }
 };
 
-export const updateEnquiryStatus = async (req, res) => {
+export const updateEnquiry = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, isRead } = req.body;
+    const { name, email, phone, subject, message, status, isRead } = req.body;
 
     const enquiry = await Enquiry.findById(id);
     if (!enquiry) return res.status(404).json({ message: "Not found" });
 
-    if (status) enquiry.status = status;
+    if (name) enquiry.name = name;
+    if (email) enquiry.email = email;
+    if (phone) enquiry.phone = phone;
+    if (subject) enquiry.subject = subject;
+    if (message) enquiry.message = message;
+    if (status) enquiry.status = status.toLowerCase();
     if (isRead !== undefined) enquiry.isRead = !!isRead;
 
     await enquiry.save();
     res.json({ message: "Enquiry updated", enquiry });
   } catch (err) {
-    console.error("updateEnquiryStatus error:", err);
+    console.error("updateEnquiry error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const deleteEnquiry = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const enquiry = await Enquiry.findByIdAndDelete(id);
+    if (!enquiry) {
+      return res.status(404).json({ message: "Enquiry not found" });
+    }
+    res.json({ message: "Enquiry deleted successfully" });
+  } catch (error) {
+    console.error("deleteEnquiry error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
