@@ -46,7 +46,12 @@ export const loginEmployee = async (req, res) => {
         email: employee.email,
         role: employee.role,
         designation: employee.designation,
-        phone: employee.phone
+        phone: employee.phone,
+        location: employee.location,
+        workingArea: employee.workingArea,
+        employeeId: employee.employeeId,
+        address: employee.address,
+        joiningDate: employee.joiningDate
       }
     });
 
@@ -69,7 +74,7 @@ export const getEmployees = async (req, res) => {
 // Create new employee
 export const createEmployee = async (req, res) => {
   try {
-    const { name, email, phone, password, role, designation, address, joiningDate } = req.body;
+    const { name, email, phone, password, role, designation, address, joiningDate, location, workingArea, employeeId } = req.body;
 
     const existingEmployee = await Employee.findOne({ email });
     if (existingEmployee) {
@@ -87,6 +92,9 @@ export const createEmployee = async (req, res) => {
       designation,
       address,
       joiningDate,
+      location,
+      workingArea,
+      employeeId,
     });
 
     await newEmployee.save();
@@ -100,7 +108,7 @@ export const createEmployee = async (req, res) => {
 export const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, role, designation, status, address, joiningDate, password } = req.body;
+    const { name, email, phone, role, designation, status, address, joiningDate, password, location, workingArea, employeeId } = req.body;
 
     const employee = await Employee.findById(id);
     if (!employee) {
@@ -115,6 +123,9 @@ export const updateEmployee = async (req, res) => {
     if (status !== undefined) employee.status = status;
     employee.address = address || employee.address;
     employee.joiningDate = joiningDate || employee.joiningDate;
+    employee.location = location || employee.location;
+    employee.workingArea = workingArea || employee.workingArea;
+    employee.employeeId = employeeId || employee.employeeId;
 
     if (password) {
       employee.password = await bcrypt.hash(password, 10);

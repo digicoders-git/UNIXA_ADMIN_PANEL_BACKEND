@@ -6,11 +6,14 @@ const employeeSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true },
     password: { type: String, required: true },
-    role: { type: String, default: "Employee" }, // e.g., Manager, Staff, etc.
+    role: { type: String, default: "Employee" },
     designation: { type: String },
     status: { type: Boolean, default: true },
     address: { type: String },
     joiningDate: { type: Date, default: Date.now },
+    location: { type: String },
+    workingArea: { type: String },
+    employeeId: { type: String },
   },
   { timestamps: true }
 );

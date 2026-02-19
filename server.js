@@ -44,7 +44,6 @@ import employeeDashboardRoutes from "./routes/employeeDashboardRoutes.js";
 
 const app = express();
 
-
 app.use(helmet());
 const allowedOrigins = [
   ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",") : []),
@@ -88,6 +87,7 @@ app.use(cors({
 
 // CORS preflight is already handled by the app.use(cors(...)) middleware above.
 
+// app.use(cors())
 app.use(morgan("dev"));
 
 app.use(express.json({ limit: "10mb" }));

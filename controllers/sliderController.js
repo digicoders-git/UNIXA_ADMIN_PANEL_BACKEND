@@ -4,19 +4,28 @@ import { cloudinary } from "../config/cloudinary.js";
 
 export const createSlider = async (req, res) => {
   try {
-    const { title, subtitle, buttonText, linkUrl, sortOrder } = req.body;
+    const { title, subtitle, buttonText, linkUrl, sortOrder, titleColor, subtitleColor } = req.body;
     if (!title) return res.status(400).json({ message: "title is required" });
-    if (!req.file) return res.status(400).json({ message: "image is required" });
-
-    const slider = await Slider.create({
+    
+    const sliderData = {
       title,
       subtitle,
       buttonText,
       linkUrl,
       sortOrder: sortOrder ? Number(sortOrder) : 0,
-      image: { url: req.file.path, publicId: req.file.filename },
-    });
+      titleColor: titleColor || "#ffffff",
+      subtitleColor: subtitleColor || "#ffffff",
+    };
 
+    if (req.file) {
+      if (req.file.mimetype.startsWith('video/')) {
+        sliderData.video = { url: req.file.path, publicId: req.file.filename };
+      } else {
+        sliderData.image = { url: req.file.path, publicId: req.file.filename };
+      }
+    }
+
+    const slider = await Slider.create(sliderData);
     res.status(201).json({ message: "Slider created", slider });
   } catch (err) {
     console.error("createSlider error:", err);
@@ -51,8 +60,7 @@ export const updateSlider = async (req, res) => {
     const slider = await Slider.findById(id);
     if (!slider) return res.status(404).json({ message: "Slider not found" });
 
-    const { title, subtitle, buttonText, linkUrl, isActive, sortOrder } =
-      req.body;
+    const { title, subtitle, buttonText, linkUrl, isActive, sortOrder, titleColor, subtitleColor } = req.body;
 
     if (title) slider.title = title;
     if (subtitle !== undefined) slider.subtitle = subtitle;
@@ -60,14 +68,24 @@ export const updateSlider = async (req, res) => {
     if (linkUrl !== undefined) slider.linkUrl = linkUrl;
     if (isActive !== undefined) slider.isActive = !!isActive;
     if (sortOrder !== undefined) slider.sortOrder = Number(sortOrder);
+    if (titleColor !== undefined) slider.titleColor = titleColor;
+    if (subtitleColor !== undefined) slider.subtitleColor = subtitleColor;
 
     if (req.file) {
-      if (slider.image?.publicId) {
-        await cloudinary.uploader.destroy(slider.image.publicId).catch(err => console.log("Del err:", err));
+      if (req.file.mimetype.startsWith('video/')) {
+        if (slider.video?.publicId) {
+          await cloudinary.uploader.destroy(slider.video.publicId, { resource_type: 'video' }).catch(err => console.log("Del err:", err));
+        }
+        slider.video = { url: req.file.path, publicId: req.file.filename };
+        slider.image = undefined;
+      } else {
+        if (slider.image?.publicId) {
+          await cloudinary.uploader.destroy(slider.image.publicId).catch(err => console.log("Del err:", err));
+        }
+        slider.image = { url: req.file.path, publicId: req.file.filename };
+        slider.video = undefined;
       }
-      slider.image = { url: req.file.path, publicId: req.file.filename };
     }
-
 
     await slider.save();
     res.json({ message: "Slider updated", slider });
@@ -86,9 +104,11 @@ export const deleteSlider = async (req, res) => {
     if (slider.image?.publicId) {
       await cloudinary.uploader.destroy(slider.image.publicId).catch(err => console.log("Del err:", err));
     }
+    if (slider.video?.publicId) {
+      await cloudinary.uploader.destroy(slider.video.publicId, { resource_type: 'video' }).catch(err => console.log("Del err:", err));
+    }
 
     await Slider.deleteOne({ _id: slider._id });
-
     res.json({ message: "Slider deleted" });
   } catch (err) {
     console.error("deleteSlider error:", err);

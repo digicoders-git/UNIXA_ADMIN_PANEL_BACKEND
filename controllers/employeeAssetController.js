@@ -19,7 +19,6 @@ export const getAssets = async (req, res) => {
 
     const assets = await EmployeeAsset.find(query).populate("assignedTo", "name email phone");
     
-    // Stats calculation
     const allAssets = await EmployeeAsset.find();
     const stats = {
         total: allAssets.length,
@@ -35,6 +34,20 @@ export const getAssets = async (req, res) => {
   }
 };
 
+// Get My Assets (for employee)
+export const getMyAssets = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    console.log("Fetching assets for employeeId:", employeeId);
+    const assets = await EmployeeAsset.find({ assignedTo: employeeId });
+    console.log("Found assets:", assets.length);
+    res.json({ assets });
+  } catch (error) {
+    console.error("Error in getMyAssets:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Add New Asset
 export const addAsset = async (req, res) => {
   try {
@@ -42,6 +55,11 @@ export const addAsset = async (req, res) => {
     await asset.save();
     res.status(201).json(asset);
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        message: `Asset with Unique ID "${req.body.uniqueId}" already exists. Please use a different Unique ID.` 
+      });
+    }
     res.status(400).json({ message: error.message });
   }
 };
@@ -65,7 +83,11 @@ export const assignAsset = async (req, res) => {
 
     const asset = await EmployeeAsset.findById(id);
     if (!asset) return res.status(404).json({ message: "Asset not found" });
-    if (asset.status === "Assigned") return res.status(400).json({ message: "Asset already assigned" });
+    if (asset.status === "Assigned") {
+      return res.status(400).json({ 
+        message: `This asset is already assigned to ${asset.assignedTo ? 'an employee' : 'someone'}. Please return it first before assigning to another employee.` 
+      });
+    }
 
     const employee = await Employee.findById(employeeId);
     if (!employee) return res.status(404).json({ message: "Employee not found" });
@@ -107,6 +129,49 @@ export const returnAsset = async (req, res) => {
     asset.assignedDate = null;
     asset.status = condition === 'Damaged' || condition === 'Under Repair' ? 'Under Repair' : 'Available';
     asset.condition = condition || asset.condition; // Update condition
+
+    await asset.save();
+    res.json(asset);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// Re-assign Asset (Employee to Employee or Employee to Admin)
+export const reassignAsset = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newEmployeeId, remarks } = req.body;
+
+    const asset = await EmployeeAsset.findById(id).populate("assignedTo");
+    if (!asset) return res.status(404).json({ message: "Asset not found" });
+    if (!asset.assignedTo) return res.status(400).json({ message: "Asset is not assigned" });
+
+    const oldEmployee = asset.assignedTo;
+
+    // Add to history
+    asset.assignmentHistory.push({
+      employeeId: oldEmployee._id,
+      employeeName: oldEmployee.name,
+      assignedDate: asset.assignedDate,
+      returnDate: new Date(),
+      conditionOnreturn: asset.condition,
+      remarks: remarks || `Re-assigned to ${newEmployeeId ? 'another employee' : 'admin'}`
+    });
+
+    if (newEmployeeId) {
+      const newEmployee = await Employee.findById(newEmployeeId);
+      if (!newEmployee) return res.status(404).json({ message: "New employee not found" });
+      
+      asset.assignedTo = newEmployeeId;
+      asset.assignedDate = new Date();
+      asset.status = "Assigned";
+    } else {
+      // Return to admin
+      asset.assignedTo = null;
+      asset.assignedDate = null;
+      asset.status = "Available";
+    }
 
     await asset.save();
     res.json(asset);

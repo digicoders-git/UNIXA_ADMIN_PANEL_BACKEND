@@ -83,11 +83,10 @@ const sliderStorage = new CloudinaryStorage({
 
 const sliderMulter = multer({
   storage: sliderStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     cb(null, true);
   },
-
 });
 
 const sliderUpload = sliderMulter.single("image");
