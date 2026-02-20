@@ -8,6 +8,7 @@ import Customer from "../models/Customer.js";
 import RentalPlan from "../models/RentalPlan.js";
 import Enquiry from "../models/Enquiry.js";
 import AdminNotification from "../models/AdminNotification.js";
+import Transaction from "../models/Transaction.js";
 
 
 // Initialize Razorpay lazily or handle missing keys gracefully
@@ -120,6 +121,20 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
     });
+
+    // Create Transaction Entry
+    console.log("Creating transaction for order:", order._id);
+    const transaction = await Transaction.create({
+      transactionId: razorpay_payment_id,
+      orderId: order._id,
+      userId: req.user.sub,
+      amount: subtotal,
+      status: "success",
+      paymentMethod: "Online",
+      paymentGateway: "Razorpay",
+      description: "Order Payment"
+    });
+    console.log("Transaction created:", transaction._id);
 
     // Clear cart
     await Cart.findOneAndUpdate(
@@ -268,7 +283,20 @@ export const verifyRentalPayment = async (req, res) => {
         }
     }
 
-    // 3. Admin Notification
+    // 3. Create Transaction Entry for Rental
+    console.log("Creating rental transaction:", razorpay_payment_id);
+    const transaction = await Transaction.create({
+      transactionId: razorpay_payment_id,
+      userId: null,
+      amount: amount,
+      status: "success",
+      paymentMethod: "Online",
+      paymentGateway: "Razorpay",
+      description: `Rental Payment - ${name}`
+    });
+    console.log("Rental transaction created:", transaction._id);
+
+    // 4. Admin Notification
     try {
         await AdminNotification.create({
             title: "New Paid Rental Booking",

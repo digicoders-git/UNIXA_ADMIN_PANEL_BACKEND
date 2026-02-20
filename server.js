@@ -27,6 +27,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import refundRoutes from "./routes/refundRoutes.js";
 import stockRoutes from "./routes/stockRoutes.js";
 import roPartRoutes from "./routes/roPartRoutes.js";
+import certificateRoutes from "./routes/certificateRoutes.js";
 
 import userRoutes from "./routes/userRoutes.js";
 import cartRoutes from "./routes/cartRoutes.js";
@@ -39,8 +40,8 @@ import userDashboardRoutes from "./routes/userDashboardRoutes.js";
 import userRentalRoutes from "./routes/userRentalRoutes.js";
 import userServiceRequestRoutes from "./routes/userServiceRequestRoutes.js";
 import userAmcRoutes from "./routes/userAmcRoutes.js";
-
 import employeeDashboardRoutes from "./routes/employeeDashboardRoutes.js";
+import managerDashboardRoutes from "./routes/managerDashboardRoutes.js";
 
 const app = express();
 
@@ -88,7 +89,8 @@ app.use(cors({
 // CORS preflight is already handled by the app.use(cors(...)) middleware above.
 
 // app.use(cors())
-app.use(morgan("dev"));
+// Logging disabled to keep console clean
+// app.use(morgan("dev"));
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -125,6 +127,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/refunds", refundRoutes);
 app.use("/api/stock", stockRoutes);
 app.use("/api/ro-parts", roPartRoutes);
+app.use("/api/certificates", certificateRoutes);
 
 // User routes
 app.use("/api/users", userRoutes);
@@ -139,10 +142,6 @@ app.use("/api/user-dashboard", userDashboardRoutes);
 app.use("/api/user-rentals", userRentalRoutes);
 app.use("/api/service-requests", userServiceRequestRoutes);
 app.use("/api/my-amcs", userAmcRoutes);
-// ... imports ...
-import managerDashboardRoutes from "./routes/managerDashboardRoutes.js";
-
-// ... other routes ...
 app.use("/api/employee-dashboard", employeeDashboardRoutes);
 app.use("/api/manager-dashboard", managerDashboardRoutes);
 
@@ -160,14 +159,14 @@ app.get("/health", (_req, res) =>
 );
 
 // 404 Handler
-app.use((req, res) =>
+app.use((req, res, next) => {
   res.status(404).json({
     message: `Route not found: ${req.method} ${req.originalUrl}`,
-  })
-);
+  });
+});
 
 // Error Handler
-app.use((err, _req, res, _next) => {
+app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({ 
     message: err.message || "Internal server error",

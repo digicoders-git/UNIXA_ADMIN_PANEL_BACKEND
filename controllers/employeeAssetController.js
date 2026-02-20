@@ -188,3 +188,73 @@ export const deleteAsset = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 }
+
+// Get Assets History
+export const getAssetsHistory = async (req, res) => {
+  try {
+    const { period, status } = req.query;
+    
+    const assets = await EmployeeAsset.find().populate("assignedTo", "name email");
+    
+    let allHistory = [];
+    assets.forEach(asset => {
+      asset.assignmentHistory.forEach(history => {
+        allHistory.push({
+          ...history.toObject(),
+          assetName: asset.assetName,
+          assetId: asset.uniqueId,
+          assetType: asset.assetType
+        });
+      });
+      
+      // Add current assignment
+      if (asset.assignedTo && asset.status === 'Assigned') {
+        allHistory.push({
+          employeeName: asset.assignedTo.name,
+          assignedDate: asset.assignedDate,
+          returnDate: null,
+          conditionOnreturn: asset.condition,
+          remarks: 'Currently Assigned',
+          assetName: asset.assetName,
+          assetId: asset.uniqueId,
+          assetType: asset.assetType,
+          status: 'Assigned'
+        });
+      }
+    });
+    
+    // Filter by period
+    if (period && period !== 'All') {
+      const now = new Date();
+      let startDate;
+      
+      if (period === 'Today') {
+        startDate = new Date(now.setHours(0, 0, 0, 0));
+      } else if (period === 'Week') {
+        startDate = new Date(now.setDate(now.getDate() - 7));
+      } else if (period === 'Month') {
+        startDate = new Date(now.setMonth(now.getMonth() - 1));
+      } else if (period === 'Year') {
+        startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+      }
+      
+      allHistory = allHistory.filter(h => new Date(h.assignedDate) >= startDate);
+    }
+    
+    // Filter by status
+    if (status && status !== 'All') {
+      if (status === 'Assigned') {
+        allHistory = allHistory.filter(h => !h.returnDate);
+      } else if (status === 'Returned') {
+        allHistory = allHistory.filter(h => h.returnDate);
+      }
+    }
+    
+    // Sort by date
+    allHistory.sort((a, b) => new Date(b.assignedDate) - new Date(a.assignedDate));
+    
+    res.json({ history: allHistory });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

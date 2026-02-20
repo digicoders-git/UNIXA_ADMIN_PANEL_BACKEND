@@ -1,5 +1,5 @@
 import express from "express";
-import { createPlan, getPlans, updatePlan, deletePlan } from "../controllers/amcPlanController.js";
+import { createPlan, getPlans, updatePlan, deletePlan, assignProducts, getAmcProducts } from "../controllers/amcPlanController.js";
 import { requireAuth } from "../middleware/auth.js"; // Assuming you want auth for admin actions
 
 const router = express.Router();
@@ -12,5 +12,7 @@ router.get("/", getPlans);
 router.post("/", requireAuth, createPlan);
 router.put("/:id", requireAuth, updatePlan);
 router.delete("/:id", requireAuth, deletePlan);
+router.post("/:id/assign-products", requireAuth, assignProducts);
+router.get("/:id/products", getAmcProducts);
 
 export default router;

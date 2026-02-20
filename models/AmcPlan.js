@@ -10,6 +10,7 @@ const amcPlanSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   servicesIncluded: { type: Number, default: 2 },
   partsIncluded: { type: Boolean, default: false },
+  productIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
 }, { timestamps: true });
 
 export default mongoose.model("AmcPlan", amcPlanSchema);

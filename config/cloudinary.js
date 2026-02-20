@@ -189,6 +189,39 @@ const uploadRentalPlanImage = (req, res, next) => {
   next();
 };
 
+// =====================================================
+// ================= BLOG IMAGES =======================
+// =====================================================
+
+const blogStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "glassecommerce_blogs",
+    resource_type: "auto",
+  },
+});
+
+const blogMulter = multer({
+  storage: blogStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    cb(null, true);
+  },
+});
+
+const blogUpload = blogMulter.fields([
+  { name: "thumbnailImage", maxCount: 1 },
+  { name: "coverImage", maxCount: 1 },
+]);
+
+const uploadBlogImages = (req, res, next) => {
+  const contentType = req.headers["content-type"] || "";
+  if (contentType.toLowerCase().includes("multipart/form-data")) {
+    return blogUpload(req, res, next);
+  }
+  next();
+};
+
 // ================= EXPORT =================
 export {
   cloudinary,
@@ -197,4 +230,5 @@ export {
   uploadCategoryImage,
   uploadRoPartImage,
   uploadRentalPlanImage,
+  uploadBlogImages,
 };

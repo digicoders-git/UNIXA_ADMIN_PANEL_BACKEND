@@ -7,12 +7,14 @@ import {
   assignAsset,
   returnAsset,
   reassignAsset,
-  deleteAsset
+  deleteAsset,
+  getAssetsHistory
 } from "../controllers/employeeAssetController.js";
 
 const router = express.Router();
 
 router.get("/", getAssets);
+router.get("/history", getAssetsHistory);
 router.get("/my-assets/:employeeId", getMyAssets);
 router.post("/", addAsset);
 router.put("/:id", updateAsset);

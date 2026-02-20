@@ -43,6 +43,14 @@ const transactionSchema = new mongoose.Schema(
     description: {
       type: String,
     },
+    type: {
+      type: String,
+      enum: ["order", "amc", "rental", "service", "refund"],
+      default: "order",
+    },
+    referenceId: {
+      type: String, // AMC ID, Rental ID, etc.
+    },
   },
   { timestamps: true }
 );

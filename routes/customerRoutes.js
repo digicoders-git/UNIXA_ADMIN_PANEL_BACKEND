@@ -11,12 +11,14 @@ import {
   createAMC,
   renewAMC,
   getAllComplaints,
-  updateComplaintStatus
+  updateComplaintStatus,
+  deleteComplaint
 } from "../controllers/customerController.js";
 
 const router = express.Router();
 
 router.put("/complaints/:ticketId", updateComplaintStatus); // Update complaint status
+router.delete("/complaints/:ticketId", deleteComplaint); // Delete complaint
 router.get("/amc/dashboard", getAMCDashboard);
 router.post("/amc/new", createAMC); // Create new AMC for a customer
 router.post("/:id/amc/renew", renewAMC); // Renew AMC for a customer

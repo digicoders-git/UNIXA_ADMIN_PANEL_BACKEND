@@ -4,11 +4,15 @@ const reviewSchema = new mongoose.Schema(
   {
     productId: {
       type: String,
-      required: true,
+      required: false,
     },
     user: {
-      type: String, // Storing name directly for simplicity as per request context
+      type: String,
       required: true,
+    },
+    role: {
+      type: String,
+      default: "Customer"
     },
     rating: {
       type: Number,
@@ -19,10 +23,19 @@ const reviewSchema = new mongoose.Schema(
     comment: {
       type: String,
       trim: true,
+      required: true,
     },
     isApproved: {
       type: Boolean,
-      default: true, // Auto-approve for now based on "dynamic show" urgency
+      default: false,
+    },
+    isTestimonial: {
+      type: Boolean,
+      default: true,
+    },
+    showInSlider: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

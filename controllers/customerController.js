@@ -2,6 +2,7 @@ import Customer from "../models/Customer.js";
 import UserAmc from "../models/UserAmc.js";
 import User from "../models/User.js";
 import UserNotification from "../models/UserNotification.js";
+import Transaction from "../models/Transaction.js";
 
 // Get all customers
 export const getCustomers = async (req, res) => {
@@ -37,8 +38,8 @@ export const getAllComplaints = async (req, res) => {
           customerId: "$_id",
           customerName: "$name",
           customerMobile: "$mobile",
-          ticketId: "$complaints.complaintId",
-          complaintId: "$complaints.complaintId", // Fallback
+          ticketId: { $ifNull: ["$complaints.complaintId", "$complaints._id"] },
+          complaintId: { $ifNull: ["$complaints.complaintId", "$complaints._id"] },
           type: "$complaints.type",
           priority: "$complaints.priority",
           status: "$complaints.status",
@@ -127,9 +128,22 @@ export const addComplaint = async (req, res) => {
     const customer = await Customer.findById(req.params.id);
     if (!customer) return res.status(404).json({ message: "Customer not found" });
 
+    // Get the highest complaint number
+    const allCustomers = await Customer.find({ "complaints.0": { $exists: true } });
+    let maxNumber = 0;
+    
+    allCustomers.forEach(c => {
+      c.complaints.forEach(comp => {
+        if (comp.complaintId && comp.complaintId.startsWith('TKT-')) {
+          const num = parseInt(comp.complaintId.split('-')[1]);
+          if (!isNaN(num) && num > maxNumber) maxNumber = num;
+        }
+      });
+    });
+
     const complaint = {
         ...req.body,
-        complaintId: `TKT-${Date.now()}`
+        complaintId: `TKT-${String(maxNumber + 1).padStart(5, '0')}`
     };
     customer.complaints.push(complaint);
     await customer.save();
@@ -188,11 +202,10 @@ export const getAMCDashboard = async (req, res) => {
       revenue: 0,
     };
 
-    // Recalculate stats from ALL AMC customers (ignoring filters for the tiles, generally preferred)
-    // To do that efficiently, maybe separate query. For now, let's calculate based on matching if that's what user wants, 
-    // OR fetch all stats separately. Let's do a separate count aggregation for accuracy.
-    
     const allAmcCustomers = await Customer.find({ "amcDetails.planName": { $exists: true, $ne: "" } });
+    
+    // Product-wise stats
+    const productMap = {};
     
     allAmcCustomers.forEach(c => {
         stats.total++;
@@ -203,12 +216,32 @@ export const getAMCDashboard = async (req, res) => {
             stats.active++;
             if (end <= next30Days) stats.expiringSoon++;
         } else {
-            stats.expired++; // Or relying on status
+            stats.expired++;
         }
         stats.revenue += c.amcDetails.amountPaid || 0;
+        
+        // Product stats
+        if (c.purifiers && c.purifiers.length > 0) {
+            const product = c.purifiers[0];
+            const productName = `${product.brand || 'Unknown'} ${product.model || ''}`;
+            
+            if (!productMap[productName]) {
+                productMap[productName] = { productName, count: 0, active: 0, expiring: 0, expired: 0 };
+            }
+            
+            productMap[productName].count++;
+            if (isActive) {
+                productMap[productName].active++;
+                if (end <= next30Days) productMap[productName].expiring++;
+            } else {
+                productMap[productName].expired++;
+            }
+        }
     });
+    
+    const productStats = Object.values(productMap);
 
-    res.json({ stats, customers });
+    res.json({ stats, customers, productStats });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -253,6 +286,24 @@ export const createAMC = async (req, res) => {
         customer.type = "AMC Customer";
         
         await customer.save();
+
+        // Create Transaction for AMC
+        try {
+            await Transaction.create({
+                transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                userId: null,
+                amount: amount,
+                status: 'success',
+                paymentMethod: 'Cash',
+                paymentGateway: 'Manual',
+                description: `AMC Plan: ${planName} - ${customer.name}`,
+                type: 'amc',
+                referenceId: newAMC.amcId
+            });
+        } catch (txnErr) {
+            console.error('Failed to create AMC transaction:', txnErr);
+        }
+
         res.status(201).json(customer);
     } catch (error) {
         res.status(400).json({ message: error.message });
@@ -299,6 +350,24 @@ export const renewAMC = async (req, res) => {
 
         customer.amcDetails = newAMC;
         await customer.save();
+
+        // Create Transaction for AMC Renewal
+        try {
+            await Transaction.create({
+                transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                userId: null,
+                amount: amountPaid || amount,
+                status: paymentStatus === 'paid' ? 'success' : 'pending',
+                paymentMethod: paymentMode || 'Cash',
+                paymentGateway: 'Manual',
+                description: `AMC Renewal: ${planName} - ${customer.name}`,
+                type: 'amc',
+                referenceId: newAMC.amcId
+            });
+        } catch (txnErr) {
+            console.error('Failed to create AMC renewal transaction:', txnErr);
+        }
+
         res.json(customer);
     } catch (error) {
         res.status(400).json({ message: error.message });
@@ -315,24 +384,32 @@ export const updateComplaintStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid Ticket ID" });
     }
 
-    // Use positional operator $ to update the specific element in array
-    const query = { "complaints.complaintId": ticketId };
-    const updateFields = {};
+    // Try to find by complaintId first, then by _id
+    let query = { "complaints.complaintId": ticketId };
+    let customer = await Customer.findOne(query);
+    
+    // If not found by complaintId, try by _id
+    if (!customer) {
+      query = { "complaints._id": ticketId };
+      customer = await Customer.findOne(query);
+    }
 
+    if (!customer) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    // Update the complaint
+    const updateFields = {};
     if (status) updateFields["complaints.$.status"] = status;
     if (resolutionNotes) updateFields["complaints.$.resolutionNotes"] = resolutionNotes;
     if (assignedTechnician) updateFields["complaints.$.assignedTechnician"] = assignedTechnician;
     if (priority) updateFields["complaints.$.priority"] = priority;
 
-    const customer = await Customer.findOneAndUpdate(
+    const updatedCustomer = await Customer.findOneAndUpdate(
       query,
       { $set: updateFields },
       { new: true }
     );
-
-    if (!customer) {
-      return res.status(404).json({ message: "Complaint not found" });
-    }
 
     // SYNC TO USER AMC IF APPLICABLE
     try {
@@ -377,7 +454,44 @@ export const updateComplaintStatus = async (req, res) => {
       console.error("Failed to create user notification:", notifErr);
     }
 
-    res.json({ message: "Complaint updated successfully", customer });
+    res.json({ message: "Complaint updated successfully", customer: updatedCustomer });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// Delete Complaint
+export const deleteComplaint = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+
+    if (!ticketId || ticketId === "undefined") {
+      return res.status(400).json({ message: "Invalid Ticket ID" });
+    }
+
+    // Try to find by complaintId first, then by _id
+    let query = { "complaints.complaintId": ticketId };
+    let customer = await Customer.findOne(query);
+    
+    // If not found by complaintId, try by _id
+    if (!customer) {
+      query = { "complaints._id": ticketId };
+      customer = await Customer.findOne(query);
+    }
+
+    if (!customer) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    // Remove the complaint from array
+    customer.complaints = customer.complaints.filter(
+      c => c._id.toString() !== ticketId && c.complaintId !== ticketId
+    );
+    
+    await customer.save();
+
+    res.json({ message: "Complaint deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

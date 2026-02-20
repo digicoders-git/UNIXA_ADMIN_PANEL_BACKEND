@@ -7,6 +7,7 @@ import Customer from "../models/Customer.js";
 import User from "../models/User.js";
 import UserAmc from "../models/UserAmc.js";
 import AmcPlan from "../models/AmcPlan.js";
+import Transaction from "../models/Transaction.js";
 import mongoose from "mongoose";
 
 const applyOffer = (offer, subtotal) => {
@@ -181,6 +182,25 @@ export const placeOrder = async (req, res) => {
     try {
         // ... Customer sync logic
     } catch (e) {}
+
+    // Create Transaction Record
+    try {
+      await Transaction.create({
+        transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        orderId: order._id,
+        userId: userId || null,
+        amount: total,
+        status: order.paymentStatus === 'paid' ? 'success' : order.paymentStatus === 'failed' ? 'failed' : 'pending',
+        paymentMethod: paymentMethod || 'COD',
+        paymentGateway: razorpay_payment_id ? 'Razorpay' : (paymentMethod === 'COD' ? 'COD' : 'Manual'),
+        description: `Order #${order._id.toString().slice(-6)} - ${itemsForOrder.map(i => i.productName).join(', ')}`,
+        type: 'order',
+        referenceId: order._id.toString()
+      });
+      console.log('✅ Transaction record created for order:', order._id);
+    } catch (txnErr) {
+      console.error('❌ Failed to create transaction record:', txnErr);
+    }
 
     res.status(201).json({ message: "Order placed", order });
   } catch (err) {

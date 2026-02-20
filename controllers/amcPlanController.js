@@ -62,3 +62,37 @@ export const deletePlan = async (req, res) => {
     res.status(500).json({ message: "Error deleting plan", error: error.message });
   }
 };
+
+// Assign Products to AMC Plan
+export const assignProducts = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { productIds } = req.body;
+    
+    const plan = await AmcPlan.findByIdAndUpdate(
+      id,
+      { productIds },
+      { new: true }
+    );
+    
+    if (!plan) return res.status(404).json({ message: "Plan not found" });
+    
+    res.status(200).json({ success: true, plan });
+  } catch (error) {
+    res.status(500).json({ message: "Error assigning products", error: error.message });
+  }
+};
+
+// Get Products assigned to AMC Plan
+export const getAmcProducts = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const plan = await AmcPlan.findById(id).populate("productIds");
+    
+    if (!plan) return res.status(404).json({ message: "Plan not found" });
+    
+    res.status(200).json({ success: true, productIds: plan.productIds });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching products", error: error.message });
+  }
+};

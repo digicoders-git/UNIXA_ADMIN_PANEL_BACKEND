@@ -9,6 +9,8 @@ export const getAllTransactions = async (req, res) => {
       .populate("orderId", "total status")
       .sort({ createdAt: -1 });
 
+    console.log("Fetched transactions count:", transactions.length);
+
     res.status(200).json({
       success: true,
       count: transactions.length,
