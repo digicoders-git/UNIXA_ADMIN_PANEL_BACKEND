@@ -3,19 +3,20 @@ import mongoose from "mongoose";
 
 const orderItemSchema = new mongoose.Schema(
   {
-    product: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      required: true, 
-      refPath: 'productType' 
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      refPath: 'items.productType'
     },
-    productType: { 
-      type: String, 
-      required: true, 
+    productType: {
+      type: String,
+      required: true,
       enum: ['Product', 'RoPart'],
       default: 'Product'
     },
     productName: { type: String, required: true },
     productPrice: { type: Number, required: true },
+    productImage: { type: String },
     quantity: { type: Number, required: true, min: 1 },
     size: { type: String },
     color: { type: String },
@@ -24,7 +25,8 @@ const orderItemSchema = new mongoose.Schema(
     warrantyId: { type: String },
     warrantyExpiry: { type: Date },
     amcId: { type: String },
-    amcPlan: { type: String },
+    amcPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'AmcPlan' },
+    amcPrice: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -65,8 +67,8 @@ const orderSchema = new mongoose.Schema(
       enum: ["pending", "paid", "failed"],
       default: "pending",
     },
-    paymentMethod: { type: String, default: "COD" },
-    
+    paymentMethod: { type: String, default: "Online" },
+
     // Razorpay fields
     razorpayOrderId: { type: String },
     razorpayPaymentId: { type: String },

@@ -10,7 +10,7 @@ import UserAmc from "../models/UserAmc.js";
 // Place Order
 export const placeOrder = async (req, res) => {
   try {
-    const { addressId, paymentMethod = "COD", offerCode, notes } = req.body;
+    const { addressId, paymentMethod = "Online", offerCode, notes } = req.body;
 
     if (!addressId) {
       return res.status(400).json({ message: "Shipping address is required" });
@@ -124,7 +124,7 @@ export const placeOrder = async (req, res) => {
         const timestamp = Date.now().toString().slice(-6);
         const random = Math.floor(1000 + Math.random() * 9000);
         item.warrantyId = `WAR${timestamp}${random}`;
-        item.warrantyExpiry = moment().add(1, 'year').toDate(); // Default 1 year warranty
+        item.warrantyExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year
         orderModified = true;
 
         // Fetch full product/RO part details
@@ -148,10 +148,10 @@ export const placeOrder = async (req, res) => {
         const amcRef = `AMC${timestamp}${Math.floor(Math.random() * 1000)}`;
         item.amcId = amcRef;
 
-        // Create UserAmc entry for each active plan (Original logic)
+        // Create UserAmc entry for each active plan
         for (const p of activePlans) {
           const startDate = new Date();
-          const endDate = moment().add(p.durationMonths || 12, 'months').toDate();
+          const endDate = new Date(Date.now() + (p.durationMonths || 12) * 30 * 24 * 60 * 60 * 1000);
           
           await UserAmc.create({
             userId: req.user.sub,
@@ -173,7 +173,7 @@ export const placeOrder = async (req, res) => {
             paymentStatus: 'Paid',
             amountPaid: p.price,
             notes: `Auto-activated from order #${order._id}`,
-            amcId: amcRef // Linking them
+            amcId: amcRef
           });
         }
       }

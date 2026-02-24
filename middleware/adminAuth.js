@@ -13,9 +13,9 @@ export const authenticateAdmin = async (req, res, next) => {
     if (!token) return res.status(401).json({ message: "Admin token missing" });
 
     const decoded = jwt.verify(token, JWT_SECRET);
-    const admin = await Admin.findOne({ _id: decoded.id, adminId: decoded.adminId });
+    const admin = await Admin.findById(decoded.sub);
 
-    if (!admin || admin.token !== token) {
+    if (!admin) {
       return res.status(401).json({ message: "Invalid admin token" });
     }
 

@@ -7,7 +7,8 @@ import {
   updateOrderStatus,
   getUserOrders,
   deleteOrder,
-  updateOrderDetails
+  updateOrderDetails,
+  getCustomersFromOrders
 } from "../controllers/orderController.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -20,6 +21,7 @@ router.get("/user/:userId", getUserOrders);
 
 // admin
 router.get("/", requireAuth, listOrders);
+router.get("/customers", getCustomersFromOrders);
 router.get("/:orderId", requireAuth, getOrder);
 router.put("/:orderId/status", requireAuth, updateOrderStatus);
 router.delete("/:orderId", requireAuth, deleteOrder);

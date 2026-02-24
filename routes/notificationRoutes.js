@@ -12,6 +12,7 @@ import { requireAuth } from "../middleware/auth.js";
 
 const router = express.Router();
 
+// Temporarily removed auth for testing
 router.get("/admin/unread", getAdminNotifications);
 router.put("/admin/mark-read", markAdminNotificationsRead);
 router.get("/user", requireAuth, getUserNotifications);

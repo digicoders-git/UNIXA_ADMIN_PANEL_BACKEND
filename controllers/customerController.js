@@ -109,12 +109,12 @@ export const addService = async (req, res) => {
   try {
     const customer = await Customer.findById(req.params.id);
     if (!customer) return res.status(404).json({ message: "Customer not found" });
-    
+
     customer.serviceHistory.push(req.body);
-    
+
     // Update next due date logic or other fields if needed
     // For now assuming req.body contains the service object
-    
+
     await customer.save();
     res.json(customer);
   } catch (error) {
@@ -131,7 +131,7 @@ export const addComplaint = async (req, res) => {
     // Get the highest complaint number
     const allCustomers = await Customer.find({ "complaints.0": { $exists: true } });
     let maxNumber = 0;
-    
+
     allCustomers.forEach(c => {
       c.complaints.forEach(comp => {
         if (comp.complaintId && comp.complaintId.startsWith('TKT-')) {
@@ -142,8 +142,8 @@ export const addComplaint = async (req, res) => {
     });
 
     const complaint = {
-        ...req.body,
-        complaintId: `TKT-${String(maxNumber + 1).padStart(5, '0')}`
+      ...req.body,
+      complaintId: `TKT-${String(maxNumber + 1).padStart(5, '0')}`
     };
     customer.complaints.push(complaint);
     await customer.save();
@@ -157,34 +157,34 @@ export const addComplaint = async (req, res) => {
 export const getAMCDashboard = async (req, res) => {
   try {
     const { status, timeframe, area, search } = req.query;
-    
+
     let query = { "amcDetails.planName": { $exists: true, $ne: "" } };
-    
+
     // Status Filter
     if (status && status !== 'All') {
-        const today = new Date();
-        if (status === 'Active') query["amcDetails.status"] = 'Active';
-        if (status === 'Expired') query["amcDetails.status"] = 'Expired';
-        if (status === 'Expiring Soon') {
-            const next30 = new Date();
-            next30.setDate(today.getDate() + 30);
-            query["amcDetails.endDate"] = { $gte: today, $lte: next30 };
-            query["amcDetails.status"] = 'Active';
-        }
+      const today = new Date();
+      if (status === 'Active') query["amcDetails.status"] = 'Active';
+      if (status === 'Expired') query["amcDetails.status"] = 'Expired';
+      if (status === 'Expiring Soon') {
+        const next30 = new Date();
+        next30.setDate(today.getDate() + 30);
+        query["amcDetails.endDate"] = { $gte: today, $lte: next30 };
+        query["amcDetails.status"] = 'Active';
+      }
     }
 
     // Search Filter
     if (search) {
-        query.$or = [
-            { name: { $regex: search, $options: "i" } },
-            { mobile: { $regex: search, $options: "i" } },
-            { "amcDetails.planName": { $regex: search, $options: "i" } },
-            { "amcDetails.amcId": { $regex: search, $options: "i" } }
-        ];
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { mobile: { $regex: search, $options: "i" } },
+        { "amcDetails.planName": { $regex: search, $options: "i" } },
+        { "amcDetails.amcId": { $regex: search, $options: "i" } }
+      ];
     }
 
     if (area && area !== 'All') {
-        query["address.area"] = area;
+      query["address.area"] = area;
     }
 
     const customers = await Customer.find(query).sort({ "amcDetails.endDate": 1 });
@@ -193,7 +193,7 @@ export const getAMCDashboard = async (req, res) => {
     const today = new Date();
     const next30Days = new Date();
     next30Days.setDate(today.getDate() + 30);
-    
+
     const stats = {
       total: 0,
       active: 0,
@@ -203,42 +203,42 @@ export const getAMCDashboard = async (req, res) => {
     };
 
     const allAmcCustomers = await Customer.find({ "amcDetails.planName": { $exists: true, $ne: "" } });
-    
+
     // Product-wise stats
     const productMap = {};
-    
+
     allAmcCustomers.forEach(c => {
-        stats.total++;
-        const end = new Date(c.amcDetails.endDate);
-        const isActive = c.amcDetails.status === 'Active' && end >= today;
-        
+      stats.total++;
+      const end = new Date(c.amcDetails.endDate);
+      const isActive = c.amcDetails.status === 'Active' && end >= today;
+
+      if (isActive) {
+        stats.active++;
+        if (end <= next30Days) stats.expiringSoon++;
+      } else {
+        stats.expired++;
+      }
+      stats.revenue += c.amcDetails.amountPaid || 0;
+
+      // Product stats
+      if (c.purifiers && c.purifiers.length > 0) {
+        const product = c.purifiers[0];
+        const productName = `${product.brand || 'Unknown'} ${product.model || ''}`;
+
+        if (!productMap[productName]) {
+          productMap[productName] = { productName, count: 0, active: 0, expiring: 0, expired: 0 };
+        }
+
+        productMap[productName].count++;
         if (isActive) {
-            stats.active++;
-            if (end <= next30Days) stats.expiringSoon++;
+          productMap[productName].active++;
+          if (end <= next30Days) productMap[productName].expiring++;
         } else {
-            stats.expired++;
+          productMap[productName].expired++;
         }
-        stats.revenue += c.amcDetails.amountPaid || 0;
-        
-        // Product stats
-        if (c.purifiers && c.purifiers.length > 0) {
-            const product = c.purifiers[0];
-            const productName = `${product.brand || 'Unknown'} ${product.model || ''}`;
-            
-            if (!productMap[productName]) {
-                productMap[productName] = { productName, count: 0, active: 0, expiring: 0, expired: 0 };
-            }
-            
-            productMap[productName].count++;
-            if (isActive) {
-                productMap[productName].active++;
-                if (end <= next30Days) productMap[productName].expiring++;
-            } else {
-                productMap[productName].expired++;
-            }
-        }
+      }
     });
-    
+
     const productStats = Object.values(productMap);
 
     res.json({ stats, customers, productStats });
@@ -249,129 +249,135 @@ export const getAMCDashboard = async (req, res) => {
 
 // Create New AMC
 export const createAMC = async (req, res) => {
-    try {
-        const { customerId, planName, planType, durationMonths, startDate, amount, notes, assignedTechnician, servicesTotal, partsIncluded } = req.body;
-        
-        const customer = await Customer.findById(customerId);
-        if(!customer) return res.status(404).json({ message: "Customer not found" });
+  try {
+    const { customerId, planName, planType, amcType, durationMonths, startDate, amount, notes, assignedTechnician, servicesTotal, partsIncluded } = req.body;
 
-        const start = new Date(startDate);
-        const end = new Date(start);
-        end.setMonth(end.getMonth() + parseInt(durationMonths));
-
-        const newAMC = {
-            amcId: `AMC-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-            planName,
-            planType,
-            startDate: start,
-            endDate: end,
-            durationMonths,
-            servicesTotal,
-            servicesUsed: 0,
-            partsIncluded: partsIncluded || false,
-            amount: amount,
-            amountPaid: 0, 
-            paymentStatus: "Pending",
-            status: "Active", // Default to active, or pending payment
-            assignedTechnician,
-            notes
-        };
-
-        // If existing AMC exists, archive it?
-        if (customer.amcDetails && customer.amcDetails.planName) {
-            customer.amcHistory.push(customer.amcDetails);
-        }
-
-        customer.amcDetails = newAMC;
-        customer.type = "AMC Customer";
-        
-        await customer.save();
-
-        // Create Transaction for AMC
-        try {
-            await Transaction.create({
-                transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                userId: null,
-                amount: amount,
-                status: 'success',
-                paymentMethod: 'Cash',
-                paymentGateway: 'Manual',
-                description: `AMC Plan: ${planName} - ${customer.name}`,
-                type: 'amc',
-                referenceId: newAMC.amcId
-            });
-        } catch (txnErr) {
-            console.error('Failed to create AMC transaction:', txnErr);
-        }
-
-        res.status(201).json(customer);
-    } catch (error) {
-        res.status(400).json({ message: error.message });
+    // If no customerId provided, return error
+    if (!customerId) {
+      return res.status(400).json({ message: "Customer ID is required" });
     }
+
+    const customer = await Customer.findById(customerId);
+    if (!customer) return res.status(404).json({ message: "Customer not found" });
+
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + parseInt(durationMonths));
+
+    const newAMC = {
+      amcId: `AMC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      planName,
+      planType,
+      amcType: amcType || "Paid",
+      startDate: start,
+      endDate: end,
+      durationMonths,
+      servicesTotal,
+      servicesUsed: 0,
+      partsIncluded: partsIncluded || false,
+      amount: amount,
+      amountPaid: 0,
+      paymentStatus: "Pending",
+      status: "Active", // Default to active, or pending payment
+      assignedTechnician,
+      notes
+    };
+
+    // If existing AMC exists, archive it?
+    if (customer.amcDetails && customer.amcDetails.planName) {
+      customer.amcHistory.push(customer.amcDetails);
+    }
+
+    customer.amcDetails = newAMC;
+    customer.type = "AMC Customer";
+
+    await customer.save();
+
+    // Create Transaction for AMC
+    try {
+      await Transaction.create({
+        transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        userId: null,
+        amount: amount,
+        status: 'success',
+        paymentMethod: 'Cash',
+        paymentGateway: 'Manual',
+        description: `AMC Plan: ${planName} - ${customer.name}`,
+        type: 'amc',
+        referenceId: newAMC.amcId
+      });
+    } catch (txnErr) {
+      console.error('Failed to create AMC transaction:', txnErr);
+    }
+
+    res.status(201).json(customer);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
 };
 
 // Renew AMC
 export const renewAMC = async (req, res) => {
-    try {
-        const { id } = req.params; // Customer ID
-        const { planName, planType, durationMonths, startDate, amount, paymentMode, paymentStatus, amountPaid } = req.body;
+  try {
+    const { id } = req.params; // Customer ID
+    const { planName, planType, durationMonths, startDate, amount, paymentMode, paymentStatus, amountPaid } = req.body;
 
-        const customer = await Customer.findById(id);
-        if(!customer) return res.status(404).json({ message: "Customer not found" });
+    const customer = await Customer.findById(id);
+    if (!customer) return res.status(404).json({ message: "Customer not found" });
 
-        // Archive current
-        if (customer.amcDetails) {
-            customer.amcDetails.status = "Expired"; // Mark old as expired
-            customer.amcHistory.push(customer.amcDetails);
-        }
-
-        const start = new Date(startDate);
-        const end = new Date(start);
-        end.setMonth(end.getMonth() + parseInt(durationMonths));
-
-        const newAMC = {
-            amcId: `AMC-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-            planName,
-            planType,
-            startDate: start,
-            endDate: end,
-            durationMonths,
-            servicesTotal: req.body.servicesTotal || 3, // Default or from body
-            servicesUsed: 0,
-            partsIncluded: req.body.partsIncluded || false,
-            amount,
-            amountPaid: amountPaid || 0,
-            paymentMode,
-            paymentStatus: paymentStatus || "Pending",
-            status: "Active",
-            assignedTechnician: req.body.assignedTechnician || customer.amcDetails.assignedTechnician, // Keep prev tech if not changed
-            notes: req.body.notes
-        };
-
-        customer.amcDetails = newAMC;
-        await customer.save();
-
-        // Create Transaction for AMC Renewal
-        try {
-            await Transaction.create({
-                transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                userId: null,
-                amount: amountPaid || amount,
-                status: paymentStatus === 'paid' ? 'success' : 'pending',
-                paymentMethod: paymentMode || 'Cash',
-                paymentGateway: 'Manual',
-                description: `AMC Renewal: ${planName} - ${customer.name}`,
-                type: 'amc',
-                referenceId: newAMC.amcId
-            });
-        } catch (txnErr) {
-            console.error('Failed to create AMC renewal transaction:', txnErr);
-        }
-
-        res.json(customer);
-    } catch (error) {
-        res.status(400).json({ message: error.message });
+    // Archive current
+    if (customer.amcDetails) {
+      customer.amcDetails.status = "Expired"; // Mark old as expired
+      customer.amcHistory.push(customer.amcDetails);
     }
+
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + parseInt(durationMonths));
+
+    const newAMC = {
+      amcId: `AMC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      planName,
+      planType,
+      startDate: start,
+      endDate: end,
+      durationMonths,
+      servicesTotal: req.body.servicesTotal || 3, // Default or from body
+      servicesUsed: 0,
+      partsIncluded: req.body.partsIncluded || false,
+      amount,
+      amountPaid: amountPaid || 0,
+      paymentMode,
+      paymentStatus: paymentStatus || "Pending",
+      status: "Active",
+      assignedTechnician: req.body.assignedTechnician || customer.amcDetails.assignedTechnician, // Keep prev tech if not changed
+      notes: req.body.notes
+    };
+
+    customer.amcDetails = newAMC;
+    await customer.save();
+
+    // Create Transaction for AMC Renewal
+    try {
+      await Transaction.create({
+        transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        userId: null,
+        amount: amountPaid || amount,
+        status: paymentStatus === 'paid' ? 'success' : 'pending',
+        paymentMethod: paymentMode || 'Cash',
+        paymentGateway: 'Manual',
+        description: `AMC Renewal: ${planName} - ${customer.name}`,
+        type: 'amc',
+        referenceId: newAMC.amcId
+      });
+    } catch (txnErr) {
+      console.error('Failed to create AMC renewal transaction:', txnErr);
+    }
+
+    res.json(customer);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
 };
 
 // Update Complaint Status
@@ -387,7 +393,7 @@ export const updateComplaintStatus = async (req, res) => {
     // Try to find by complaintId first, then by _id
     let query = { "complaints.complaintId": ticketId };
     let customer = await Customer.findOne(query);
-    
+
     // If not found by complaintId, try by _id
     if (!customer) {
       query = { "complaints._id": ticketId };
@@ -433,13 +439,13 @@ export const updateComplaintStatus = async (req, res) => {
       if (userRecord) {
         let title = "Update on your service request";
         let message = `Your request ${ticketId} status is now ${status || 'updated'}.`;
-        
+
         if (assignedTechnician) {
-            title = "Technician Assigned";
-            message = `Technician ${assignedTechnician} has been assigned to your request ${ticketId}.`;
+          title = "Technician Assigned";
+          message = `Technician ${assignedTechnician} has been assigned to your request ${ticketId}.`;
         } else if (status === "Resolved") {
-            title = "Request Resolved";
-            message = `Your service request ${ticketId} has been marked as resolved.`;
+          title = "Request Resolved";
+          message = `Your service request ${ticketId} has been marked as resolved.`;
         }
 
         await UserNotification.create({
@@ -473,7 +479,7 @@ export const deleteComplaint = async (req, res) => {
     // Try to find by complaintId first, then by _id
     let query = { "complaints.complaintId": ticketId };
     let customer = await Customer.findOne(query);
-    
+
     // If not found by complaintId, try by _id
     if (!customer) {
       query = { "complaints._id": ticketId };
@@ -488,7 +494,7 @@ export const deleteComplaint = async (req, res) => {
     customer.complaints = customer.complaints.filter(
       c => c._id.toString() !== ticketId && c.complaintId !== ticketId
     );
-    
+
     await customer.save();
 
     res.json({ message: "Complaint deleted successfully" });

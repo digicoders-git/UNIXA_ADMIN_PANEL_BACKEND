@@ -1,5 +1,5 @@
 import moment from "moment-timezone";
-import Customer from "../models/Customer.js";
+import ServiceRequest from "../models/ServiceRequest.js";
 import Enquiry from "../models/Enquiry.js";
 import Employee from "../models/Employee.js";
 
@@ -10,38 +10,17 @@ export const getManagerDashboardStats = async (req, res) => {
   try {
     const now = moment().tz("Asia/Kolkata");
     const last7Days = now.clone().subtract(6, "days").startOf("day").toDate();
-    const startOfToday = now.clone().startOf("day").toDate();
 
-    // 1. Fetch all customers to aggregate complaints
-    const customers = await Customer.find({ "complaints.0": { $exists: true } }).select("complaints name mobile");
-
-    // Flatten complaints
-    let allComplaints = [];
-    customers.forEach(customer => {
-      if (customer.complaints && customer.complaints.length > 0) {
-        customer.complaints.forEach(complaint => {
-          allComplaints.push({
-            ...complaint.toObject(),
-            customerName: customer.name,
-            customerMobile: customer.mobile
-          });
-        });
-      }
-    });
-
-    // Sort complaints by date descending
-    allComplaints.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    // Calculate Complaint Stats
-    const totalTickets = allComplaints.length;
-    const pendingTickets = allComplaints.filter(c => c.status !== "Resolved").length;
+    // 1. Fetch Service Requests (Tickets)
+    const allTickets = await ServiceRequest.find().sort({ createdAt: -1 });
+    const totalTickets = allTickets.length;
+    const pendingTickets = allTickets.filter(t => t.status !== "Resolved").length;
     
     // 2. Fetch Enquiries (Leads)
     const totalLeads = await Enquiry.countDocuments();
-    const newLeads = await Enquiry.countDocuments({ createdAt: { $gte: now.clone().subtract(30, 'days').toDate() } });
 
     // 3. Fetch Employees
-    const totalEmployees = await Employee.countDocuments({ role: { $ne: "Manager" } }); // Exclude managers if needed, or just count all
+    const totalEmployees = await Employee.countDocuments({ role: { $ne: "Manager" } });
     
     // 4. Weekly Performance Chart Data
     const ticketsPerDay = {};
@@ -49,14 +28,14 @@ export const getManagerDashboardStats = async (req, res) => {
 
     // Initialize last 7 days
     for (let i = 0; i < 7; i++) {
-        const dateStr = now.clone().subtract(i, "days").format("YYYY-MM-DD"); // Using MM-DD for chart, or YYYY-MM-DD for key
+        const dateStr = now.clone().subtract(i, "days").format("YYYY-MM-DD");
         ticketsPerDay[dateStr] = 0;
         leadsPerDay[dateStr] = 0;
     }
 
     // Process Tickets for Chart
-    allComplaints.forEach(c => {
-      const dateStr = moment(c.date).tz("Asia/Kolkata").format("YYYY-MM-DD");
+    allTickets.forEach(t => {
+      const dateStr = moment(t.createdAt).tz("Asia/Kolkata").format("YYYY-MM-DD");
       if (ticketsPerDay[dateStr] !== undefined) {
         ticketsPerDay[dateStr]++;
       }
@@ -71,23 +50,23 @@ export const getManagerDashboardStats = async (req, res) => {
       }
     });
 
-    const categories = Object.keys(ticketsPerDay).sort().map(date => moment(date).format("ddd")); // Mon, Tue...
+    const categories = Object.keys(ticketsPerDay).sort().map(date => moment(date).format("ddd"));
     const sortedDates = Object.keys(ticketsPerDay).sort();
     const ticketsSeries = sortedDates.map(date => ticketsPerDay[date]);
     const leadsSeries = sortedDates.map(date => leadsPerDay[date]);
 
-    // 5. Recent Activity (Mix of new tickets and new leads)
+    // 5. Recent Activity
     const recentActivity = [];
     
     // Add top 3 recent tickets
-    allComplaints.slice(0, 3).forEach(task => {
+    allTickets.slice(0, 3).forEach(ticket => {
         recentActivity.push({
             type: 'Ticket',
-            name: task.customerName,
-            action: `raised a ${task.type || 'complaint'}`,
-            time: moment(task.date).fromNow(),
+            name: ticket.customerName,
+            action: `raised a ${ticket.type || 'service request'}`,
+            time: moment(ticket.createdAt).fromNow(),
             color: 'red',
-            date: new Date(task.date)
+            date: new Date(ticket.createdAt)
         });
     });
 
@@ -118,8 +97,8 @@ export const getManagerDashboardStats = async (req, res) => {
       chart: {
         categories,
         series: [
-          { name: 'Tickets', data: ticketsSeries },
-          { name: 'Leads', data: leadsSeries }
+          { name: 'Tickets', data: ticketsSeries, color: '#3182CE' },
+          { name: 'Leads', data: leadsSeries, color: '#38B2AC' }
         ]
       },
       recentActivity: finalRecentActivity

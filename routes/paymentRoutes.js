@@ -10,19 +10,16 @@ import { authenticateUser } from "../middleware/userAuth.js";
 
 const router = express.Router();
 
-// All payment routes require authentication
-router.use(authenticateUser);
-
-// Create Razorpay order
+// Create Razorpay order (public)
 router.post("/create-order", createPaymentOrder);
 
-// Verify payment and create order
+// Verify payment and create order (public)
 router.post("/verify", verifyPaymentAndCreateOrder);
 
-// Handle payment failure
+// Handle payment failure (public)
 router.post("/failure", handlePaymentFailure);
 
-// Verify rental payment
+// Verify rental payment (public)
 router.post("/verify-rental", verifyRentalPayment);
 
 export default router;

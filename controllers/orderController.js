@@ -31,15 +31,15 @@ const applyOffer = (offer, subtotal) => {
 // PLACE ORDER (public + admin offline)
 export const placeOrder = async (req, res) => {
   try {
-    const { 
-      userId, 
-      items, 
-      shippingAddress, 
-      offerCode, 
-      paymentMethod, 
-      notes, 
-      razorpay_order_id, 
-      razorpay_payment_id, 
+    const {
+      userId,
+      items,
+      shippingAddress,
+      offerCode,
+      paymentMethod,
+      notes,
+      razorpay_order_id,
+      razorpay_payment_id,
       razorpay_signature,
       source, // "offline" or undefined/"online"
       paymentStatus, // for manual offline
@@ -52,7 +52,7 @@ export const placeOrder = async (req, res) => {
     if (source !== "offline" && !userId) {
       return res.status(400).json({ message: "userId is required for online orders" });
     }
-    
+
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "items are required" });
     }
@@ -62,7 +62,7 @@ export const placeOrder = async (req, res) => {
 
     const productIds = items.map((i) => i.productId).filter(id => id);
     console.log("Extracted Product IDs:", productIds);
-    
+
     // Fetch from both collections
     const [products, roParts] = await Promise.all([
       Product.find({ _id: { $in: productIds } }),
@@ -97,7 +97,7 @@ export const placeOrder = async (req, res) => {
           .json({ message: `Invalid productId: ${item.productId}` });
       }
       const qty = Number(item.quantity || 1);
-      
+
       // Handle AMC Price addition if applicable so total is correct
       const amcPrice = Number(item.amcPrice || 0);
       const productPrice = itemData.finalPrice;
@@ -110,6 +110,7 @@ export const placeOrder = async (req, res) => {
         productType: type, // Store the model type for refPath
         productName: itemData.name,
         productPrice: productPrice, // Base product price
+        productImage: itemData.mainImage?.url || itemData.img || '',
         quantity: qty,
         size: item.size,
         color: item.color,
@@ -145,7 +146,7 @@ export const placeOrder = async (req, res) => {
       discount,
       total,
       offerCode: offer ? offer.code : undefined,
-      paymentMethod: paymentMethod || "COD",
+      paymentMethod: paymentMethod || "Online",
       paymentStatus: source === "offline" ? (paymentStatus || "paid") : (razorpay_payment_id ? "paid" : "pending"),
       status: source === "offline" ? (status || "confirmed") : "pending",
       shippingAddress,
@@ -161,18 +162,18 @@ export const placeOrder = async (req, res) => {
       try {
         console.log('🔄 Starting AMC auto-activation for order:', order._id);
         console.log('📦 Total items in order:', order.items.length);
-      
+
         // We need populated products/roParts to get their amcPlans
-        const fullProducts = products; 
-        const fullRoParts = roParts;   
+        const fullProducts = products;
+        const fullRoParts = roParts;
 
         for (const item of order.items) {
-            // ... (Logic to activate AMC based on product's internal AMC plans or selected plan) ...
-            // Since offline order now sends amcPlan explicitly, we could use that directly
-            if (item.amcPlan && item.amcId) {
-               // If manually selected AMC, handling logic would go here
-               // For now, keeping existing auto-activation logic for online orders or implied plans
-            }
+          // ... (Logic to activate AMC based on product's internal AMC plans or selected plan) ...
+          // Since offline order now sends amcPlan explicitly, we could use that directly
+          if (item.amcPlan && item.amcId) {
+            // If manually selected AMC, handling logic would go here
+            // For now, keeping existing auto-activation logic for online orders or implied plans
+          }
         }
       } catch (e) { console.error(e); }
     }
@@ -180,8 +181,8 @@ export const placeOrder = async (req, res) => {
 
     // Sync with Customer Database (Simplified for now)
     try {
-        // ... Customer sync logic
-    } catch (e) {}
+      // ... Customer sync logic
+    } catch (e) { }
 
     // Create Transaction Record
     try {
@@ -192,7 +193,7 @@ export const placeOrder = async (req, res) => {
         amount: total,
         status: order.paymentStatus === 'paid' ? 'success' : order.paymentStatus === 'failed' ? 'failed' : 'pending',
         paymentMethod: paymentMethod || 'COD',
-        paymentGateway: razorpay_payment_id ? 'Razorpay' : (paymentMethod === 'COD' ? 'COD' : 'Manual'),
+        paymentGateway: razorpay_payment_id ? 'Razorpay' : (paymentMethod === 'Online' ? 'Online' : 'Manual'),
         description: `Order #${order._id.toString().slice(-6)} - ${itemsForOrder.map(i => i.productName).join(', ')}`,
         type: 'order',
         referenceId: order._id.toString()
@@ -251,16 +252,77 @@ export const updateOrderStatus = async (req, res) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found" });
 
+    const oldStatus = order.status;
+
     if (status) {
-        order.status = status;
-        if (status === 'confirmed' && !order.confirmedAt) order.confirmedAt = new Date();
-        if (status === 'shipped' && !order.shippedAt) order.shippedAt = new Date();
-        if (status === 'delivered' && !order.deliveredAt) order.deliveredAt = new Date();
-        if (status === 'cancelled' && !order.cancelledAt) order.cancelledAt = new Date();
+      order.status = status;
+      if (status === 'confirmed' && !order.confirmedAt) order.confirmedAt = new Date();
+      if (status === 'shipped' && !order.shippedAt) order.shippedAt = new Date();
+      if (status === 'delivered' && !order.deliveredAt) order.deliveredAt = new Date();
+      if (status === 'cancelled' && !order.cancelledAt) order.cancelledAt = new Date();
     }
     if (paymentStatus) order.paymentStatus = paymentStatus;
 
     await order.save();
+
+    // Auto-create UserAMC when order is delivered
+    if (status === 'delivered' && oldStatus !== 'delivered' && order.userId) {
+      try {
+        console.log('🎯 Order delivered, activating AMC plans...');
+
+        for (const item of order.items) {
+          // Fetch product to get AMC plans
+          let productData = null;
+          if (item.productType === 'RoPart') {
+            productData = await RoPart.findById(item.product).populate('amcPlans');
+          } else {
+            productData = await Product.findById(item.product).populate('amcPlans');
+          }
+
+          if (!productData || !productData.amcPlans || productData.amcPlans.length === 0) {
+            console.log(`  ⏭️  No AMC plans for: ${item.productName}`);
+            continue;
+          }
+
+          const activePlans = productData.amcPlans.filter(p => p && p.isActive !== false);
+          if (activePlans.length === 0) continue;
+
+          // Create UserAMC for each active plan
+          for (const plan of activePlans) {
+            const startDate = new Date();
+            const endDate = new Date();
+            endDate.setMonth(endDate.getMonth() + (plan.durationMonths || 12));
+
+            await UserAmc.create({
+              userId: order.userId,
+              orderId: order._id,
+              amcId: `AMC${Date.now()}${Math.floor(Math.random() * 1000)}`,
+              productId: item.product,
+              productType: item.productType || 'Product',
+              productName: item.productName,
+              productImage: item.productImage,
+              amcPlanId: plan._id,
+              amcPlanName: plan.name,
+              amcPlanPrice: plan.price,
+              durationMonths: plan.durationMonths || 12,
+              startDate,
+              endDate,
+              servicesTotal: plan.servicesIncluded || 4,
+              servicesUsed: 0,
+              partsIncluded: plan.partsIncluded || false,
+              status: 'Active',
+              paymentStatus: 'Paid',
+              amountPaid: plan.price
+            });
+
+            console.log(`  ✅ AMC activated: ${plan.name} for ${item.productName}`);
+          }
+        }
+      } catch (amcErr) {
+        console.error('❌ Error activating AMC:', amcErr);
+      }
+    }
+
     res.json({ message: "Order updated", order });
   } catch (err) {
     console.error("updateOrderStatus error:", err);
@@ -274,9 +336,9 @@ export const deleteOrder = async (req, res) => {
     const { orderId } = req.params;
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found" });
-    
+
     // Optional: Add logic to restrict deletion of completed orders
-    
+
     await Order.findByIdAndDelete(orderId);
     res.json({ message: "Order deleted successfully" });
   } catch (err) {
@@ -287,31 +349,31 @@ export const deleteOrder = async (req, res) => {
 
 // ADMIN Update Order Details (For Offline Orders Editing)
 export const updateOrderDetails = async (req, res) => {
-    try {
-        const { orderId } = req.params;
-        const updates = req.body; // Expecting shippingAddress, paymentStatus, etc.
+  try {
+    const { orderId } = req.params;
+    const updates = req.body; // Expecting shippingAddress, paymentStatus, etc.
 
-        const order = await Order.findById(orderId);
-        if (!order) return res.status(404).json({ message: "Order not found" });
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: "Order not found" });
 
-        // Update fields safely
-        if (updates.shippingAddress) {
-            order.shippingAddress = { ...order.shippingAddress, ...updates.shippingAddress };
-        }
-        if (updates.paymentMethod) order.paymentMethod = updates.paymentMethod;
-        if (updates.paymentStatus) order.paymentStatus = updates.paymentStatus;
-        if (updates.status) order.status = updates.status;
-        
-        // Recalculating items is complex, for simple edit usually we block item changes 
-        // OR we'd need to re-run the item validation logic as in placeOrder. 
-        // For MVP, letting admins edit customer details and status is safer.
-        
-        await order.save();
-        res.json({ message: "Order details updated", order });
-    } catch (err) {
-        console.error("updateOrderDetails error:", err);
-        res.status(500).json({ message: "Server error" });
+    // Update fields safely
+    if (updates.shippingAddress) {
+      order.shippingAddress = { ...order.shippingAddress, ...updates.shippingAddress };
     }
+    if (updates.paymentMethod) order.paymentMethod = updates.paymentMethod;
+    if (updates.paymentStatus) order.paymentStatus = updates.paymentStatus;
+    if (updates.status) order.status = updates.status;
+
+    // Recalculating items is complex, for simple edit usually we block item changes 
+    // OR we'd need to re-run the item validation logic as in placeOrder. 
+    // For MVP, letting admins edit customer details and status is safer.
+
+    await order.save();
+    res.json({ message: "Order details updated", order });
+  } catch (err) {
+    console.error("updateOrderDetails error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 // USER list
@@ -324,6 +386,64 @@ export const getUserOrders = async (req, res) => {
     res.json({ orders });
   } catch (err) {
     console.error("getUserOrders error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// GET CUSTOMERS FROM ORDERS
+export const getCustomersFromOrders = async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    const orders = await Order.find().sort({ createdAt: -1 });
+
+    // Extract unique customers based on phone number
+    const customerMap = new Map();
+
+    orders.forEach(order => {
+      const phone = order.shippingAddress?.phone;
+      if (!phone) return;
+
+      if (!customerMap.has(phone)) {
+        customerMap.set(phone, {
+          _id: order._id,
+          name: order.shippingAddress.name,
+          mobile: phone,
+          email: order.shippingAddress.email || '',
+          address: {
+            house: order.shippingAddress.addressLine1 || '',
+            area: order.shippingAddress.addressLine2 || '',
+            city: order.shippingAddress.city || '',
+            pincode: order.shippingAddress.pincode || '',
+          },
+          type: 'Order Customer',
+          status: 'Active',
+          purifiers: order.items.map(item => ({
+            brand: item.productName.split(' ')[0] || 'Unknown',
+            model: item.productName,
+            type: 'RO',
+          })),
+          serviceHistory: [],
+          createdAt: order.createdAt
+        });
+      }
+    });
+
+    let customers = Array.from(customerMap.values());
+
+    // Apply search filter
+    if (search) {
+      const searchLower = search.toLowerCase();
+      customers = customers.filter(c =>
+        c.name?.toLowerCase().includes(searchLower) ||
+        c.mobile?.includes(search) ||
+        c.email?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    res.json(customers);
+  } catch (err) {
+    console.error("getCustomersFromOrders error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

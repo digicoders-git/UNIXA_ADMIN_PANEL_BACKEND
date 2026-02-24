@@ -4,6 +4,23 @@ import mongoose from "mongoose";
 import Customer from "../models/Customer.js";
 import User from "../models/User.js";
 import AdminNotification from "../models/AdminNotification.js";
+import ServiceRequest from "../models/ServiceRequest.js";
+
+// Get all user AMCs (Admin)
+export const getAllUserAmcs = async (req, res) => {
+  try {
+    const amcs = await UserAmc.find()
+      .populate('userId', 'firstName lastName phone email')
+      .populate('amcPlanId', 'name')
+      .populate('productId', 'name')
+      .sort({ createdAt: -1 });
+    
+    res.json({ amcs });
+  } catch (err) {
+    console.error("getAllUserAmcs error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
 // Get all active AMCs for logged-in user
 export const getMyAmcs = async (req, res) => {
@@ -17,6 +34,8 @@ export const getMyAmcs = async (req, res) => {
     
     const amcs = await UserAmc.find(filter)
       .populate('amcPlanId', 'name features color isPopular')
+      .populate('productId', 'name mainImage img')
+      .populate('orderId', '_id createdAt status')
       .sort({ endDate: 1, createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -27,12 +46,10 @@ export const getMyAmcs = async (req, res) => {
     const amcsWithExtras = amcs.map(amc => {
       const amcObj = amc.toObject({ virtuals: true });
       
-      // Calculate days remaining
       const now = new Date();
       const end = new Date(amc.endDate);
       const daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
       
-      // Calculate progress percentage
       const start = new Date(amc.startDate);
       const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
       const daysPassed = Math.ceil((now - start) / (1000 * 60 * 60 * 24));
@@ -157,7 +174,7 @@ export const requestService = async (req, res) => {
       _id: amcId,
       userId: req.user.sub,
       status: 'Active'
-    });
+    }).populate('userId');
     
     if (!amc) {
       return res.status(404).json({ message: "Active AMC not found" });
@@ -169,52 +186,45 @@ export const requestService = async (req, res) => {
       });
     }
     
-    // Add service request to history
-    const complaintId = `SR-${Date.now().toString().slice(-6)}`;
+    const count = await ServiceRequest.countDocuments();
+    const ticketId = `TKT-${String(count + 1).padStart(5, '0')}`;
+    
+    const user = amc.userId;
+    const description = `AMC Service Request\nProduct: ${amc.productName}\nAMC ID: ${amc.amcId}\nNotes: ${notes || 'Service requested by customer'}`;
+    
+    await ServiceRequest.create({
+      ticketId,
+      userId: user._id,
+      amcId: amc._id,
+      customerName: `${user.firstName} ${user.lastName}`,
+      customerPhone: user.phone,
+      customerEmail: user.email,
+      type: 'AMC Service',
+      description,
+      priority: 'Medium',
+      status: 'Open'
+    });
     
     amc.serviceHistory.push({
       date: new Date(),
       type: 'Regular Service',
       notes: notes || 'Service requested by customer',
       technicianName: 'Pending Assignment',
-      complaintId: complaintId
+      complaintId: ticketId
     });
     
-    amc.servicesUsed += 1;
     await amc.save();
 
-    // Create a complaint in the Customer record (for Admin Service Requests page)
-    try {
-      const user = await User.findById(req.user.sub);
-      if (user) {
-        const customer = await Customer.findOne({ $or: [{ mobile: user.phone }, { email: user.email }] });
-        if (customer) {
-          customer.complaints.push({
-            complaintId: complaintId,
-            type: "Service Request", // Matches enum in Customer.js
-            description: `AMC Service Visit Request for ${amc.productName}. Notes: ${notes || 'None'}`,
-            date: new Date(),
-            priority: "Medium",
-            status: "Open"
-          });
-          await customer.save();
-
-          // Create Admin Notification
-          await AdminNotification.create({
-            title: "New AMC Service Request",
-            message: `Customer ${customer.name} has requested a maintenance visit for ${amc.productName}`,
-            type: "ServiceRequest",
-            refId: complaintId
-          });
-        }
-      }
-    } catch (adminErr) {
-      console.error("Failed to sync service request to admin panel:", adminErr);
-    }
+    await AdminNotification.create({
+      title: "New AMC Service Request",
+      message: `Service request for ${amc.productName} - AMC ID: ${amc.amcId}`,
+      type: "ServiceRequest",
+      refId: ticketId
+    });
     
     res.json({ 
       message: "Service request submitted successfully",
-      amc,
+      complaintId: ticketId,
       servicesRemaining: amc.servicesTotal - amc.servicesUsed
     });
   } catch (err) {

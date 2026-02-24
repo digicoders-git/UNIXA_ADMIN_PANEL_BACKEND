@@ -5,11 +5,17 @@ import {
   getAmcDetails,
   getAmcSummary,
   requestService,
-  cancelAmc
+  cancelAmc,
+  getAllUserAmcs
 } from "../controllers/userAmcController.js";
 import { requireAuth } from "../middleware/auth.js";
+import { authenticateAdmin } from "../middleware/adminAuth.js";
 
 const router = express.Router();
+
+// Admin route
+router.get("/admin/all", authenticateAdmin, getAllUserAmcs);
+router.get("/all", authenticateAdmin, getAllUserAmcs);
 
 // All routes require authentication
 router.use(requireAuth);

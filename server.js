@@ -39,9 +39,11 @@ import rentalPlanRoutes from "./routes/rentalPlanRoutes.js";
 import userDashboardRoutes from "./routes/userDashboardRoutes.js";
 import userRentalRoutes from "./routes/userRentalRoutes.js";
 import userServiceRequestRoutes from "./routes/userServiceRequestRoutes.js";
+import adminServiceRequestRoutes from "./routes/adminServiceRequestRoutes.js";
 import userAmcRoutes from "./routes/userAmcRoutes.js";
 import employeeDashboardRoutes from "./routes/employeeDashboardRoutes.js";
 import managerDashboardRoutes from "./routes/managerDashboardRoutes.js";
+import assignedTicketRoutes from "./routes/assignedTicketRoutes.js";
 
 const app = express();
 
@@ -141,9 +143,11 @@ app.use("/api/rental-plans", rentalPlanRoutes);
 app.use("/api/user-dashboard", userDashboardRoutes);
 app.use("/api/user-rentals", userRentalRoutes);
 app.use("/api/service-requests", userServiceRequestRoutes);
+app.use("/api/admin/service-requests", adminServiceRequestRoutes);
 app.use("/api/my-amcs", userAmcRoutes);
 app.use("/api/employee-dashboard", employeeDashboardRoutes);
 app.use("/api/manager-dashboard", managerDashboardRoutes);
+app.use("/api/assigned-tickets", assignedTicketRoutes);
 
 
 

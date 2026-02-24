@@ -1,8 +1,7 @@
-
 import moment from "moment-timezone";
-import Customer from "../models/Customer.js";
+import AssignedTicket from "../models/AssignedTicket.js";
+import ServiceRequest from "../models/ServiceRequest.js";
 import Enquiry from "../models/Enquiry.js";
-import Employee from "../models/Employee.js";
 
 // Get dashboard stats for Employee/Manager Panel
 export const getEmployeeDashboardStats = async (req, res) => {
@@ -11,27 +10,14 @@ export const getEmployeeDashboardStats = async (req, res) => {
     const last7Days = now.clone().subtract(6, "days").startOf("day").toDate();
     const startOfToday = now.clone().startOf("day").toDate();
 
-    const customers = await Customer.find({ "complaints.0": { $exists: true } }).select("complaints name mobile address");
-
-    let allComplaints = [];
-    customers.forEach(customer => {
-      if (customer.complaints && customer.complaints.length > 0) {
-        customer.complaints.forEach(complaint => {
-          allComplaints.push({
-            ...complaint.toObject(),
-            customerName: customer.name,
-            customerMobile: customer.mobile,
-            customerAddress: customer.address ? `${customer.address.area}, ${customer.address.city}` : "Unknown"
-          });
-        });
-      }
-    });
-
-    allComplaints.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    const totalTickets = allComplaints.length;
-    const pendingJobs = allComplaints.filter(c => c.status !== "Resolved").length;
-    const completedJobs = allComplaints.filter(c => c.status === "Resolved").length;
+    // Fetch all tickets (AssignedTickets + ServiceRequests)
+    const assignedTickets = await AssignedTicket.find().sort({ createdAt: -1 });
+    const serviceRequests = await ServiceRequest.find().sort({ createdAt: -1 });
+    
+    const allTickets = [...assignedTickets, ...serviceRequests];
+    const totalTickets = allTickets.length;
+    const pendingJobs = allTickets.filter(t => t.status !== "Completed" && t.status !== "Resolved").length;
+    const completedJobs = allTickets.filter(t => t.status === "Completed" || t.status === "Resolved").length;
     const newLeadsCount = await Enquiry.countDocuments({ createdAt: { $gte: now.clone().subtract(30, 'days').toDate() } });
 
     const ticketsPerDay = {};
@@ -43,8 +29,8 @@ export const getEmployeeDashboardStats = async (req, res) => {
       leadsPerDay[dateStr] = 0;
     }
 
-    allComplaints.forEach(c => {
-      const dateStr = moment(c.date).tz("Asia/Kolkata").format("YYYY-MM-DD");
+    allTickets.forEach(t => {
+      const dateStr = moment(t.createdAt || t.date).tz("Asia/Kolkata").format("YYYY-MM-DD");
       if (ticketsPerDay[dateStr] !== undefined) {
         ticketsPerDay[dateStr]++;
       }
@@ -63,18 +49,18 @@ export const getEmployeeDashboardStats = async (req, res) => {
     const ticketsSeries = sortedDates.map(date => ticketsPerDay[date]);
     const leadsSeries = sortedDates.map(date => leadsPerDay[date]);
 
-    const recentTasks = allComplaints
-      .filter(c => c.status !== "Resolved")
+    const recentTasks = allTickets
+      .filter(t => t.status !== "Completed" && t.status !== "Resolved")
       .slice(0, 5)
       .map(task => ({
-        id: task.complaintId || "N/A",
-        customer: task.customerName,
-        type: task.type,
+        id: task.ticketId || task._id,
+        customer: task.customerName || "Unknown",
+        type: task.type || task.ticketType || "Service",
         status: task.status,
-        priority: task.priority,
-        time: moment(task.date).fromNow(),
+        priority: task.priority || "Medium",
+        time: moment(task.createdAt || task.date).fromNow(),
         isUrgent: task.priority === "High",
-        isNew: moment(task.date).isAfter(startOfToday)
+        isNew: moment(task.createdAt || task.date).isAfter(startOfToday)
       }));
 
     res.json({
@@ -130,6 +116,155 @@ export const getEmployeeComplaints = async (req, res) => {
     res.json({ complaints: allComplaints });
   } catch (error) {
     console.error("Get Employee Complaints Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const getTicketTypes = async (req, res) => {
+  try {
+    const ticketTypes = Customer.schema.path('complaints').schema.path('type').enumValues;
+    res.json({ ticketTypes });
+  } catch (error) {
+    console.error("Get Ticket Types Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const getTicketMetadata = async (req, res) => {
+  try {
+    const priorities = Customer.schema.path('complaints').schema.path('priority').enumValues;
+    const statuses = Customer.schema.path('complaints').schema.path('status').enumValues;
+    const sources = ['Phone', 'Email', 'Whatsapp', 'Walk-in', 'Website'];
+    
+    res.json({ priorities, statuses, sources });
+  } catch (error) {
+    console.error("Get Ticket Metadata Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const createComplaint = async (req, res) => {
+  try {
+    const { 
+      customerMobile, 
+      type, 
+      priority, 
+      description, 
+      status, 
+      scheduledDate, 
+      preferredTime, 
+      source,
+      assignedTechnician,
+      resolutionNotes
+    } = req.body;
+
+    if (!customerMobile || !type || !description) {
+      return res.status(400).json({ message: "Customer mobile, type, and description are required" });
+    }
+
+    const customer = await Customer.findOne({ mobile: customerMobile });
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    const newComplaint = {
+      complaintId: `TKT-${Date.now().toString().slice(-6)}`,
+      type,
+      description,
+      date: new Date(),
+      priority: priority || "Medium",
+      status: status || "Open",
+      assignedTechnician: assignedTechnician || "",
+      resolutionNotes: resolutionNotes || ""
+    };
+
+    customer.complaints.push(newComplaint);
+    await customer.save();
+
+    res.status(201).json({ 
+      message: "Complaint created successfully", 
+      complaint: {
+        ticketId: newComplaint.complaintId,
+        customerName: customer.name,
+        customerMobile: customer.mobile,
+        type: newComplaint.type,
+        priority: newComplaint.priority,
+        status: newComplaint.status,
+        date: newComplaint.date,
+        description: newComplaint.description,
+        assignedTechnician: newComplaint.assignedTechnician,
+        resolutionNotes: newComplaint.resolutionNotes,
+        source: source || "Phone",
+        scheduledDate: scheduledDate || "",
+        preferredTime: preferredTime || ""
+      }
+    });
+  } catch (error) {
+    console.error("Create Complaint Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const updateComplaint = async (req, res) => {
+  try {
+    const { complaintId } = req.params;
+    const { type, priority, description, status, assignedTechnician, resolutionNotes } = req.body;
+
+    const customer = await Customer.findOne({ "complaints.complaintId": complaintId });
+    if (!customer) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    const complaint = customer.complaints.find(c => c.complaintId === complaintId);
+    if (!complaint) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    if (type) complaint.type = type;
+    if (priority) complaint.priority = priority;
+    if (description) complaint.description = description;
+    if (status) complaint.status = status;
+    if (assignedTechnician !== undefined) complaint.assignedTechnician = assignedTechnician;
+    if (resolutionNotes !== undefined) complaint.resolutionNotes = resolutionNotes;
+
+    await customer.save();
+
+    res.json({ 
+      message: "Complaint updated successfully",
+      complaint: {
+        ticketId: complaint.complaintId,
+        customerName: customer.name,
+        customerMobile: customer.mobile,
+        type: complaint.type,
+        priority: complaint.priority,
+        status: complaint.status,
+        date: complaint.date,
+        description: complaint.description,
+        assignedTechnician: complaint.assignedTechnician,
+        resolutionNotes: complaint.resolutionNotes
+      }
+    });
+  } catch (error) {
+    console.error("Update Complaint Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const deleteComplaint = async (req, res) => {
+  try {
+    const { complaintId } = req.params;
+
+    const customer = await Customer.findOne({ "complaints.complaintId": complaintId });
+    if (!customer) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    customer.complaints = customer.complaints.filter(c => c.complaintId !== complaintId);
+    await customer.save();
+
+    res.json({ message: "Complaint deleted successfully" });
+  } catch (error) {
+    console.error("Delete Complaint Error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };

@@ -29,17 +29,21 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: "Password must be at least 6 characters" });
     }
 
-    // Check email exists
-    const emailExists = await User.findOne({ email }).lean();
+    // Check email exists (case-insensitive)
+    const emailExists = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } }).lean();
     if (emailExists) {
+      console.log("Email already exists:", email, "Found:", emailExists.email);
       return res.status(409).json({ message: "User already exists with this email" });
     }
 
     // Check phone exists
     const phoneExists = await User.findOne({ phone }).lean();
     if (phoneExists) {
+      console.log("Phone already exists:", phone, "Found:", phoneExists.phone);
       return res.status(409).json({ message: "User already exists with this phone number" });
     }
+
+    console.log("No existing user found. Proceeding with registration...");
 
     console.log("Hashing password...");
     const hash = await bcrypt.hash(password, SALT_ROUNDS);

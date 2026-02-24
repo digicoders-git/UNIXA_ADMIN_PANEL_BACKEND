@@ -3,10 +3,11 @@ import AmcPlan from "../models/AmcPlan.js";
 // Create a new Plan
 export const createPlan = async (req, res) => {
   try {
-    const { name, price, durationMonths, features, color, isPopular, isActive, servicesIncluded, partsIncluded } = req.body;
+    const { name, amcType, price, durationMonths, features, color, isPopular, isActive, servicesIncluded, partsIncluded } = req.body;
     
     const newPlan = new AmcPlan({
       name,
+      amcType,
       price,
       durationMonths,
       features,

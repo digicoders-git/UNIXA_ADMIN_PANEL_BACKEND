@@ -9,7 +9,7 @@ const createManager = async () => {
     console.log("✅ Connected to MongoDB");
 
     // Check if manager already exists
-    const existing = await Employee.findOne({ email: "manager@unixa.com" });
+    const existing = await Employee.findOne({ email: "mp04042007@gmail.com" });
     if (existing) {
       console.log("⚠️ Manager already exists!");
       console.log("Email:", existing.email);
@@ -21,20 +21,20 @@ const createManager = async () => {
     const hashedPassword = await bcrypt.hash("manager123", 10);
     
     const manager = new Employee({
-      name: "Test Manager",
-      email: "manager@unixa.com",
+      name: "Your Name",
+      email: "mp04042007@gmail.com",
       phone: "9876543210",
       password: hashedPassword,
       role: "Manager",
       designation: "Operations Manager",
       status: true,
-      address: "Test Address",
+      address: "Your Address",
       joiningDate: new Date()
     });
 
     await manager.save();
     console.log("✅ Manager created successfully!");
-    console.log("📧 Email: manager@unixa.com");
+    console.log("📧 Email: mp04042007@gmail.com");
     console.log("🔑 Password: manager123");
     
     process.exit(0);
