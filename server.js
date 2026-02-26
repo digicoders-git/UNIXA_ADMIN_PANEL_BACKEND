@@ -64,8 +64,11 @@ const allowedOrigins = [
   "https://Unixa-kappa.vercel.app",
   "https://unixa-admin-panel.vercel.app",
   "https://unixa-website.vercel.app",
-  "https://unixa-user-panel.vercel.app"
-
+  "https://unixa-user-panel.vercel.app",
+  "https://admin.unixa.co.in",
+  "https://www.admin.unixa.co.in",
+  "https://unixa.co.in",
+  "https://www.unixa.co.in"
 ].filter(Boolean);
 
 app.use(cors({
