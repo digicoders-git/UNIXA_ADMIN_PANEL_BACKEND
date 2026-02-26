@@ -2,6 +2,7 @@ import moment from "moment-timezone";
 import AssignedTicket from "../models/AssignedTicket.js";
 import ServiceRequest from "../models/ServiceRequest.js";
 import Enquiry from "../models/Enquiry.js";
+import Customer from "../models/Customer.js";
 
 // Get dashboard stats for Employee/Manager Panel
 export const getEmployeeDashboardStats = async (req, res) => {
@@ -13,7 +14,7 @@ export const getEmployeeDashboardStats = async (req, res) => {
     // Fetch all tickets (AssignedTickets + ServiceRequests)
     const assignedTickets = await AssignedTicket.find().sort({ createdAt: -1 });
     const serviceRequests = await ServiceRequest.find().sort({ createdAt: -1 });
-    
+
     const allTickets = [...assignedTickets, ...serviceRequests];
     const totalTickets = allTickets.length;
     const pendingJobs = allTickets.filter(t => t.status !== "Completed" && t.status !== "Resolved").length;
@@ -135,7 +136,7 @@ export const getTicketMetadata = async (req, res) => {
     const priorities = Customer.schema.path('complaints').schema.path('priority').enumValues;
     const statuses = Customer.schema.path('complaints').schema.path('status').enumValues;
     const sources = ['Phone', 'Email', 'Whatsapp', 'Walk-in', 'Website'];
-    
+
     res.json({ priorities, statuses, sources });
   } catch (error) {
     console.error("Get Ticket Metadata Error:", error);
@@ -145,14 +146,14 @@ export const getTicketMetadata = async (req, res) => {
 
 export const createComplaint = async (req, res) => {
   try {
-    const { 
-      customerMobile, 
-      type, 
-      priority, 
-      description, 
-      status, 
-      scheduledDate, 
-      preferredTime, 
+    const {
+      customerMobile,
+      type,
+      priority,
+      description,
+      status,
+      scheduledDate,
+      preferredTime,
       source,
       assignedTechnician,
       resolutionNotes
@@ -181,8 +182,8 @@ export const createComplaint = async (req, res) => {
     customer.complaints.push(newComplaint);
     await customer.save();
 
-    res.status(201).json({ 
-      message: "Complaint created successfully", 
+    res.status(201).json({
+      message: "Complaint created successfully",
       complaint: {
         ticketId: newComplaint.complaintId,
         customerName: customer.name,
@@ -229,7 +230,7 @@ export const updateComplaint = async (req, res) => {
 
     await customer.save();
 
-    res.json({ 
+    res.json({
       message: "Complaint updated successfully",
       complaint: {
         ticketId: complaint.complaintId,

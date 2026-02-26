@@ -105,10 +105,12 @@ userAmcSchema.virtual('daysRemaining').get(function() {
 
 // Virtual for isExpired
 userAmcSchema.virtual('isExpired').get(function() {
-  return new Date() > new Date(this.endDate);
+  const dateExpired = new Date() > new Date(this.endDate);
+  const servicesExhausted = this.servicesUsed >= this.servicesTotal;
+  return dateExpired || servicesExhausted;
 });
 
-// Pre-save hook to auto-update status based on endDate
+// Pre-save hook to auto-update status based on endDate or services used
 userAmcSchema.pre('save', function(next) {
   if (this.isExpired && this.status === 'Active') {
     this.status = 'Expired';
@@ -135,7 +137,12 @@ userAmcSchema.statics.getActiveAmcs = function(userId) {
 userAmcSchema.statics.updateExpiredAmcs = async function() {
   const now = new Date();
   const result = await this.updateMany(
-    { endDate: { $lt: now }, status: 'Active' },
+    { 
+      $or: [
+        { endDate: { $lt: now }, status: 'Active' },
+        { $expr: { $gte: ['$servicesUsed', '$servicesTotal'] }, status: 'Active' }
+      ]
+    },
     { $set: { status: 'Expired' } }
   );
   return result;

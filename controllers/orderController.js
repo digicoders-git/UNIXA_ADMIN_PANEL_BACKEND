@@ -186,10 +186,20 @@ export const placeOrder = async (req, res) => {
 
     // Create Transaction Record
     try {
+      // Get customer name from shippingAddress or User
+      let customerName = shippingAddress.name || 'Guest';
+      if (userId) {
+        const user = await User.findById(userId).select('firstName lastName');
+        if (user) {
+          customerName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || customerName;
+        }
+      }
+
       await Transaction.create({
         transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         orderId: order._id,
         userId: userId || null,
+        customerName,
         amount: total,
         status: order.paymentStatus === 'paid' ? 'success' : order.paymentStatus === 'failed' ? 'failed' : 'pending',
         paymentMethod: paymentMethod || 'COD',
@@ -269,31 +279,78 @@ export const updateOrderStatus = async (req, res) => {
     if (status === 'delivered' && oldStatus !== 'delivered' && order.userId) {
       try {
         console.log('🎯 Order delivered, activating AMC plans...');
+        console.log('Order ID:', order._id);
+        console.log('User ID:', order.userId);
 
         for (const item of order.items) {
-          // Fetch product to get AMC plans
-          let productData = null;
-          if (item.productType === 'RoPart') {
-            productData = await RoPart.findById(item.product).populate('amcPlans');
-          } else {
-            productData = await Product.findById(item.product).populate('amcPlans');
-          }
+          console.log(`\nProcessing item: ${item.productName}`);
+          
+          // Check if customer selected specific AMC
+          if (item.amcPlan && item.amcId) {
+            console.log('  ✅ Customer selected AMC, using that...');
+            const selectedPlan = await AmcPlan.findById(item.amcPlan);
+            if (!selectedPlan || !selectedPlan.isActive) {
+              console.log('  ⏭️  AMC plan not found or inactive');
+              continue;
+            }
 
-          if (!productData || !productData.amcPlans || productData.amcPlans.length === 0) {
-            console.log(`  ⏭️  No AMC plans for: ${item.productName}`);
-            continue;
-          }
-
-          const activePlans = productData.amcPlans.filter(p => p && p.isActive !== false);
-          if (activePlans.length === 0) continue;
-
-          // Create UserAMC for each active plan
-          for (const plan of activePlans) {
             const startDate = new Date();
             const endDate = new Date();
-            endDate.setMonth(endDate.getMonth() + (plan.durationMonths || 12));
+            endDate.setMonth(endDate.getMonth() + (selectedPlan.durationMonths || 12));
 
-            await UserAmc.create({
+            const userAmc = await UserAmc.create({
+              userId: order.userId,
+              orderId: order._id,
+              amcId: item.amcId,
+              productId: item.product,
+              productType: item.productType || 'Product',
+              productName: item.productName,
+              productImage: item.productImage,
+              amcPlanId: selectedPlan._id,
+              amcPlanName: selectedPlan.name,
+              amcPlanPrice: selectedPlan.price,
+              durationMonths: selectedPlan.durationMonths || 12,
+              startDate,
+              endDate,
+              servicesTotal: selectedPlan.servicesIncluded || 4,
+              servicesUsed: 0,
+              partsIncluded: selectedPlan.partsIncluded || false,
+              status: 'Active',
+              paymentStatus: 'Paid',
+              amountPaid: item.amcPrice || selectedPlan.price
+            });
+
+            console.log(`  ✅ AMC activated! UserAmc ID: ${userAmc._id}`);
+          } else {
+            // No AMC selected by customer, check if product has AMC plans
+            console.log('  ℹ️  No AMC selected, checking product AMC plans...');
+            
+            let productData = null;
+            if (item.productType === 'RoPart') {
+              productData = await RoPart.findById(item.product).populate('amcPlans');
+            } else {
+              productData = await Product.findById(item.product).populate('amcPlans');
+            }
+
+            if (!productData || !productData.amcPlans || productData.amcPlans.length === 0) {
+              console.log('  ⏭️  No AMC plans available for this product');
+              continue;
+            }
+
+            // Get first active AMC plan
+            const firstActivePlan = productData.amcPlans.find(p => p && p.isActive !== false);
+            if (!firstActivePlan) {
+              console.log('  ⏭️  No active AMC plans found');
+              continue;
+            }
+
+            console.log(`  📦 Auto-activating first AMC plan: ${firstActivePlan.name}`);
+
+            const startDate = new Date();
+            const endDate = new Date();
+            endDate.setMonth(endDate.getMonth() + (firstActivePlan.durationMonths || 12));
+
+            const userAmc = await UserAmc.create({
               userId: order.userId,
               orderId: order._id,
               amcId: `AMC${Date.now()}${Math.floor(Math.random() * 1000)}`,
@@ -301,25 +358,28 @@ export const updateOrderStatus = async (req, res) => {
               productType: item.productType || 'Product',
               productName: item.productName,
               productImage: item.productImage,
-              amcPlanId: plan._id,
-              amcPlanName: plan.name,
-              amcPlanPrice: plan.price,
-              durationMonths: plan.durationMonths || 12,
+              amcPlanId: firstActivePlan._id,
+              amcPlanName: firstActivePlan.name,
+              amcPlanPrice: firstActivePlan.price,
+              durationMonths: firstActivePlan.durationMonths || 12,
               startDate,
               endDate,
-              servicesTotal: plan.servicesIncluded || 4,
+              servicesTotal: firstActivePlan.servicesIncluded || 4,
               servicesUsed: 0,
-              partsIncluded: plan.partsIncluded || false,
+              partsIncluded: firstActivePlan.partsIncluded || false,
               status: 'Active',
               paymentStatus: 'Paid',
-              amountPaid: plan.price
+              amountPaid: firstActivePlan.price
             });
 
-            console.log(`  ✅ AMC activated: ${plan.name} for ${item.productName}`);
+            console.log(`  ✅ AMC auto-activated! UserAmc ID: ${userAmc._id}`);
           }
         }
+        
+        console.log('🎉 AMC activation completed!');
       } catch (amcErr) {
         console.error('❌ Error activating AMC:', amcErr);
+        console.error('Stack:', amcErr.stack);
       }
     }
 

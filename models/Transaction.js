@@ -16,6 +16,9 @@ const transactionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    customerName: {
+      type: String,
+    },
     amount: {
       type: Number,
       required: true,
@@ -38,7 +41,7 @@ const transactionSchema = new mongoose.Schema(
       default: "Razorpay",
     },
     gatewayResponse: {
-      type: Object, // To store full response from gateway for debugging
+      type: Object,
     },
     description: {
       type: String,
@@ -49,7 +52,7 @@ const transactionSchema = new mongoose.Schema(
       default: "order",
     },
     referenceId: {
-      type: String, // AMC ID, Rental ID, etc.
+      type: String,
     },
   },
   { timestamps: true }
