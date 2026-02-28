@@ -65,8 +65,12 @@ const allowedOrigins = [
   "https://unixa-admin-panel.vercel.app",
   "https://unixa-website.vercel.app",
   "https://unixa-user-panel.vercel.app",
+  "https://unixa-manager-panel.vercel.app",
+  "https://unixa-employee-panel.vercel.app",
   "https://admin.unixa.co.in",
   "https://www.admin.unixa.co.in",
+  "https://user.unixa.co.in",
+  "https://www.user.unixa.co.in",
   "https://unixa.co.in",
   "https://www.unixa.co.in"
 ].filter(Boolean);
