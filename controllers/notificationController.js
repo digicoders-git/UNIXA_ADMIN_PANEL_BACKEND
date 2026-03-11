@@ -90,3 +90,26 @@ export const markUserNotificationsRead = async (req, res) => {
     }
 };
 
+// Create User Notification (from admin)
+export const createUserNotification = async (req, res) => {
+    try {
+        const { userId, title, message, type } = req.body;
+        
+        if (!userId || !title || !message) {
+            return res.status(400).json({ message: "userId, title, and message are required" });
+        }
+        
+        const notification = await UserNotification.create({
+            userId,
+            title,
+            message,
+            type: type || 'AMC',
+            isRead: false
+        });
+        
+        res.status(201).json({ message: "Notification created", notification });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+

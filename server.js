@@ -24,6 +24,7 @@ import employeeRoutes from "./routes/employeeRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import employeeAssetRoutes from "./routes/employeeAssetRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import smsRoutes from "./routes/smsRoutes.js";
 import refundRoutes from "./routes/refundRoutes.js";
 import stockRoutes from "./routes/stockRoutes.js";
 import roPartRoutes from "./routes/roPartRoutes.js";
@@ -44,6 +45,7 @@ import userAmcRoutes from "./routes/userAmcRoutes.js";
 import employeeDashboardRoutes from "./routes/employeeDashboardRoutes.js";
 import managerDashboardRoutes from "./routes/managerDashboardRoutes.js";
 import assignedTicketRoutes from "./routes/assignedTicketRoutes.js";
+import leadRoutes from "./routes/leadRoutes.js";
 
 const app = express();
 
@@ -135,6 +137,7 @@ app.use("/api/employees", employeeRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/employee-assets", employeeAssetRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/sms", smsRoutes);
 app.use("/api/refunds", refundRoutes);
 app.use("/api/stock", stockRoutes);
 app.use("/api/ro-parts", roPartRoutes);
@@ -157,6 +160,7 @@ app.use("/api/my-amcs", userAmcRoutes);
 app.use("/api/employee-dashboard", employeeDashboardRoutes);
 app.use("/api/manager-dashboard", managerDashboardRoutes);
 app.use("/api/assigned-tickets", assignedTicketRoutes);
+app.use("/api/leads", leadRoutes);
 
 
 
@@ -205,3 +209,4 @@ app.listen(PORT, '0.0.0.0', async () => {
 });
 
 // Trigger restart for amc-plans
+// Trigger restart for lead enum update

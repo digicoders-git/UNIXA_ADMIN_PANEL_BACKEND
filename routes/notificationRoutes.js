@@ -6,7 +6,8 @@ import {
   getAdminNotifications,
   markAdminNotificationsRead,
   getUserNotifications,
-  markUserNotificationsRead
+  markUserNotificationsRead,
+  createUserNotification
 } from "../controllers/notificationController.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -17,6 +18,7 @@ router.get("/admin/unread", getAdminNotifications);
 router.put("/admin/mark-read", markAdminNotificationsRead);
 router.get("/user", requireAuth, getUserNotifications);
 router.put("/user/mark-read", requireAuth, markUserNotificationsRead);
+router.post("/user-notifications", createUserNotification);
 router.get("/", getNotifications);
 router.post("/send", sendNotification);
 router.delete("/:id", deleteNotification);

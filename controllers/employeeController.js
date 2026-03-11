@@ -9,7 +9,7 @@ export const loginEmployee = async (req, res) => {
 
     // 1. Find the employee
     const employee = await Employee.findOne({ email });
-    
+
     if (!employee) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
@@ -27,9 +27,9 @@ export const loginEmployee = async (req, res) => {
 
     // 4. Generate Token
     const token = jwt.sign(
-      { 
-        id: employee._id, 
-        role: employee.role, 
+      {
+        id: employee._id,
+        role: employee.role,
         email: employee.email,
         name: employee.name
       },
@@ -64,7 +64,10 @@ export const loginEmployee = async (req, res) => {
 // Get all employees
 export const getEmployees = async (req, res) => {
   try {
-    const employees = await Employee.find().sort({ createdAt: -1 });
+    const employees = await Employee.find()
+      .select('name email phone role designation status employeeId joiningDate createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
     res.json(employees);
   } catch (error) {
     res.status(500).json({ message: "Error fetching employees", error: error.message });
@@ -164,10 +167,10 @@ export const getEmployeeStats = async (req, res) => {
 
     // TODO: Replace with real aggregation from Task/Attendance models when available
     // For now, generating dynamic but simulated data based on employee ID to ensure consistency
-    
+
     // Simulate productivity (70-95%)
     const productivity = Math.floor(Math.random() * (95 - 70 + 1)) + 70;
-    
+
     // Simulate tasks (20-60)
     const tasksCompleted = Math.floor(Math.random() * (60 - 20 + 1)) + 20;
 

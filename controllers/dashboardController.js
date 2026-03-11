@@ -6,6 +6,8 @@ import Category from "../models/Category.js";
 import Offer from "../models/Offer.js";
 import Enquiry from "../models/Enquiry.js";
 import Employee from "../models/Employee.js";
+import UserAmc from "../models/UserAmc.js";
+import AssignedTicket from "../models/AssignedTicket.js";
 
 export const getDashboardStats = async (req, res) => {
   try {
@@ -37,6 +39,8 @@ export const getDashboardStats = async (req, res) => {
       latestProducts,
       recentEnquiries,
       activeOffersList,
+      allUserAmcsForDue,
+      openAmcTicketsForDue,
     ] = await Promise.all([
       Order.countDocuments(),
       Product.countDocuments(),
@@ -141,7 +145,41 @@ export const getDashboardStats = async (req, res) => {
 
       // List of active offers
       Offer.find({ isActive: true }).sort({ createdAt: -1 }).limit(10),
+
+      // AMC stats
+      UserAmc.find().select('status startDate endDate servicesUsed servicesTotal'),
+      AssignedTicket.find({ amcId: { $exists: true }, status: { $in: ['Pending', 'In Progress'] } }).select('amcId'),
     ]);
+
+    const allAmcs = allUserAmcsForDue || [];
+    const openAmcIds = (openAmcTicketsForDue || []).map(t => t.amcId.toString());
+    const intervalMonths = 4;
+    const fifteenDaysInMs = 15 * 24 * 60 * 60 * 1000;
+    const nowTime = new Date().getTime();
+
+    let activeAmcCount = 0;
+    let expiredAmcCount = 0;
+    const totalAmcCount = allAmcs.length;
+
+    const dueAmcCount = allAmcs.filter(amc => {
+      const isDateExpired = new Date(amc.endDate).getTime() < nowTime;
+      const isServicesExhausted = (amc.servicesUsed || 0) >= (amc.servicesTotal || 4);
+
+      if (amc.status === 'Active' && !isDateExpired && !isServicesExhausted) {
+        activeAmcCount++;
+      } else if (amc.status === 'Expired' || isDateExpired || isServicesExhausted) {
+        expiredAmcCount++;
+      }
+
+      // Only active and non-expired AMCs can be "Due"
+      if (amc.status !== 'Active' || isDateExpired || isServicesExhausted) return false;
+      if (openAmcIds.includes(amc._id.toString())) return false;
+
+      const startDate = new Date(amc.startDate);
+      const dueDate = new Date(startDate);
+      dueDate.setMonth(dueDate.getMonth() + ((amc.servicesUsed + 1) * intervalMonths));
+      return dueDate <= new Date(nowTime + fifteenDaysInMs);
+    }).length;
 
     let totalEmployees = 0;
     let activeEmployees = 0;
@@ -198,6 +236,10 @@ export const getDashboardStats = async (req, res) => {
         todayOrders: todayOrdersCount,
         totalEmployees,
         activeEmployees,
+        dueAmcCount,
+        totalAmcCount,
+        activeAmcCount,
+        expiredAmcCount,
       },
       charts: {
         salesLast7Days, // line/bar chart

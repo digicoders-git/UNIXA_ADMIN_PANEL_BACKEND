@@ -33,7 +33,8 @@ const userSchema = new mongoose.Schema(
       pincode: { type: String, required: true },
       country: { type: String, default: "India" },
       addressType: { type: String, enum: ["home", "office", "other"], default: "home" },
-      isDefault: { type: Boolean, default: false }
+      isDefault: { type: Boolean, default: false },
+      isPrimary: { type: Boolean, default: false }
     }],
     
     // Account status

@@ -6,7 +6,7 @@ import Product from "../models/Product.js";
 
 export const createEnquiry = async (req, res) => {
   try {
-    const { name, email, phone, subject, message, status } = req.body;
+    const { name, email, phone, subject, message, status, address, productInterest, leadStatus, notes, followUpDate, source } = req.body;
     if (!name ) {
       return res.status(400).json({ message: "name required" });
     }
@@ -16,7 +16,13 @@ export const createEnquiry = async (req, res) => {
       phone,
       subject,
       message: message || "Generated from Manager Panel",
-      status: status ? status.toLowerCase() : 'new'
+      status: status ? status.toLowerCase() : 'new',
+      address: address || '',
+      productInterest: productInterest || '',
+      leadStatus: leadStatus || 'Warm',
+      notes: notes || '',
+      followUpDate: followUpDate || null,
+      source: source || 'Field Visit'
     });
 
     // Create Admin Notification
@@ -111,7 +117,7 @@ export const getEnquiry = async (req, res) => {
 export const updateEnquiry = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, subject, message, status, isRead } = req.body;
+    const { name, email, phone, subject, message, status, isRead, address, productInterest, leadStatus, notes, followUpDate } = req.body;
 
     const enquiry = await Enquiry.findById(id);
     if (!enquiry) return res.status(404).json({ message: "Not found" });
@@ -123,6 +129,11 @@ export const updateEnquiry = async (req, res) => {
     if (message) enquiry.message = message;
     if (status) enquiry.status = status.toLowerCase();
     if (isRead !== undefined) enquiry.isRead = !!isRead;
+    if (address !== undefined) enquiry.address = address;
+    if (productInterest !== undefined) enquiry.productInterest = productInterest;
+    if (leadStatus !== undefined) enquiry.leadStatus = leadStatus;
+    if (notes !== undefined) enquiry.notes = notes;
+    if (followUpDate !== undefined) enquiry.followUpDate = followUpDate;
 
     await enquiry.save();
     res.json({ message: "Enquiry updated", enquiry });

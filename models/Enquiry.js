@@ -14,6 +14,12 @@ const enquirySchema = new mongoose.Schema(
       default: "new",
     },
     isRead: { type: Boolean, default: false },
+    address: { type: String, default: "" },
+    productInterest: { type: String, default: "" },
+    leadStatus: { type: String, enum: ["Hot", "Warm", "Cold"], default: "Warm" },
+    notes: { type: String, default: "" },
+    followUpDate: { type: Date },
+    source: { type: String, default: "Field Visit" }
   },
   { timestamps: true }
 );

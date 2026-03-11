@@ -2,18 +2,18 @@ import mongoose from "mongoose";
 
 const userNotificationSchema = new mongoose.Schema(
   {
-    userId: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: "User", 
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       required: true,
       index: true
     },
     title: { type: String, required: true },
     message: { type: String, required: true },
-    type: { 
-      type: String, 
-      enum: ["Info", "Success", "Alert", "Service"], 
-      default: "Info" 
+    type: {
+      type: String,
+      enum: ["Info", "Success", "Alert", "Service", "AMC"],
+      default: "Info"
     },
     refId: { type: String }, // Links to Ticket ID or Order ID
     isRead: { type: Boolean, default: false },

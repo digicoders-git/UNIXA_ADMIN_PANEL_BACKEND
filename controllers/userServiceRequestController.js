@@ -15,6 +15,14 @@ export const createServiceRequest = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    const primaryAddress = user.addresses && user.addresses.length > 0 
+      ? user.addresses.find(addr => addr.isDefault || addr.isPrimary) || user.addresses[0]
+      : null;
+    
+    const addressString = primaryAddress 
+      ? `${primaryAddress.addressLine1 || ''}, ${primaryAddress.city || ''}, ${primaryAddress.state || ''} ${primaryAddress.pincode || ''}`.trim()
+      : 'N/A';
+
     const count = await ServiceRequest.countDocuments();
     const ticketId = `TKT-${String(count + 1).padStart(5, '0')}`;
 
@@ -24,6 +32,7 @@ export const createServiceRequest = async (req, res) => {
       customerName: `${user.firstName} ${user.lastName}`,
       customerPhone: user.phone,
       customerEmail: user.email,
+      address: addressString,
       type,
       description,
       date: date || new Date(),

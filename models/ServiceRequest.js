@@ -18,6 +18,7 @@ const serviceRequestSchema = new mongoose.Schema({
   customerName: String,
   customerPhone: String,
   customerEmail: String,
+  address: String,
   type: {
     type: String,
     required: true
@@ -46,5 +47,11 @@ const serviceRequestSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+// Indexes for faster queries
+serviceRequestSchema.index({ ticketId: 1 });
+serviceRequestSchema.index({ status: 1 });
+serviceRequestSchema.index({ createdAt: -1 });
+serviceRequestSchema.index({ userId: 1 });
 
 export default mongoose.model("ServiceRequest", serviceRequestSchema);

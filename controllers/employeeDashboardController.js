@@ -3,24 +3,46 @@ import AssignedTicket from "../models/AssignedTicket.js";
 import ServiceRequest from "../models/ServiceRequest.js";
 import Enquiry from "../models/Enquiry.js";
 import Customer from "../models/Customer.js";
+import Lead from "../models/Lead.js";
 
 // Get dashboard stats for Employee/Manager Panel
 export const getEmployeeDashboardStats = async (req, res) => {
   try {
     const now = moment().tz("Asia/Kolkata");
     const last7Days = now.clone().subtract(6, "days").startOf("day").toDate();
+    const last30Days = now.clone().subtract(30, 'days').toDate();
     const startOfToday = now.clone().startOf("day").toDate();
 
-    // Fetch all tickets (AssignedTickets + ServiceRequests)
-    const assignedTickets = await AssignedTicket.find().sort({ createdAt: -1 });
-    const serviceRequests = await ServiceRequest.find().sort({ createdAt: -1 });
+    // Get employee name from token (if available) or query param
+    const employeeName = req.user?.name || req.query.employeeName;
 
-    const allTickets = [...assignedTickets, ...serviceRequests];
-    const totalTickets = allTickets.length;
-    const pendingJobs = allTickets.filter(t => t.status !== "Completed" && t.status !== "Resolved").length;
-    const completedJobs = allTickets.filter(t => t.status === "Completed" || t.status === "Resolved").length;
-    const newLeadsCount = await Enquiry.countDocuments({ createdAt: { $gte: now.clone().subtract(30, 'days').toDate() } });
+    // Build query filter for employee-specific data
+    const employeeFilter = employeeName ? { assignedTo: employeeName } : {};
 
+    // 1. Parallel counts for efficiency - EMPLOYEE SPECIFIC
+    const [
+      totalAssigned,
+      pendingAssigned,
+      completedAssigned,
+      newLeadsCount
+    ] = await Promise.all([
+      AssignedTicket.countDocuments(employeeFilter),
+      AssignedTicket.countDocuments({ ...employeeFilter, status: { $nin: ["Completed", "Resolved"] } }),
+      AssignedTicket.countDocuments({ ...employeeFilter, status: { $in: ["Completed", "Resolved"] } }),
+      Lead.countDocuments({ createdAt: { $gte: last30Days } })
+    ]);
+
+    const totalTickets = totalAssigned;
+    const pendingJobs = pendingAssigned;
+    const completedJobs = completedAssigned;
+
+    // 2. Fetch data for last 7 days ONLY (for charts) - EMPLOYEE SPECIFIC
+    const [recentAssigned, recentLeads] = await Promise.all([
+      AssignedTicket.find({ ...employeeFilter, createdAt: { $gte: last7Days } }).select('createdAt').lean(),
+      Lead.find({ createdAt: { $gte: last7Days } }).select('createdAt').lean()
+    ]);
+
+    // 3. Prepare chart data
     const ticketsPerDay = {};
     const leadsPerDay = {};
 
@@ -30,39 +52,39 @@ export const getEmployeeDashboardStats = async (req, res) => {
       leadsPerDay[dateStr] = 0;
     }
 
-    allTickets.forEach(t => {
-      const dateStr = moment(t.createdAt || t.date).tz("Asia/Kolkata").format("YYYY-MM-DD");
-      if (ticketsPerDay[dateStr] !== undefined) {
-        ticketsPerDay[dateStr]++;
-      }
+    recentAssigned.forEach(t => {
+      const dateStr = moment(t.createdAt).tz("Asia/Kolkata").format("YYYY-MM-DD");
+      if (ticketsPerDay[dateStr] !== undefined) ticketsPerDay[dateStr]++;
     });
-
-    const recentEnquiries = await Enquiry.find({ createdAt: { $gte: last7Days } });
-    recentEnquiries.forEach(e => {
+    recentLeads.forEach(e => {
       const dateStr = moment(e.createdAt).tz("Asia/Kolkata").format("YYYY-MM-DD");
-      if (leadsPerDay[dateStr] !== undefined) {
-        leadsPerDay[dateStr]++;
-      }
+      if (leadsPerDay[dateStr] !== undefined) leadsPerDay[dateStr]++;
     });
 
-    const chartCategories = Object.keys(ticketsPerDay).sort().map(date => moment(date).format("ddd"));
     const sortedDates = Object.keys(ticketsPerDay).sort();
+    const chartCategories = sortedDates.map(date => moment(date).format("ddd"));
     const ticketsSeries = sortedDates.map(date => ticketsPerDay[date]);
     const leadsSeries = sortedDates.map(date => leadsPerDay[date]);
 
-    const recentTasks = allTickets
-      .filter(t => t.status !== "Completed" && t.status !== "Resolved")
-      .slice(0, 5)
-      .map(task => ({
-        id: task.ticketId || task._id,
-        customer: task.customerName || "Unknown",
-        type: task.type || task.ticketType || "Service",
-        status: task.status,
-        priority: task.priority || "Medium",
-        time: moment(task.createdAt || task.date).fromNow(),
-        isUrgent: task.priority === "High",
-        isNew: moment(task.createdAt || task.date).isAfter(startOfToday)
-      }));
+    // 4. Recent Tasks - EMPLOYEE SPECIFIC
+    const recentAssignedTasks = await AssignedTicket.find({ 
+      ...employeeFilter, 
+      status: { $nin: ["Completed", "Resolved"] } 
+    })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
+
+    const recentTasks = recentAssignedTasks.map(task => ({
+      id: task._id,
+      customer: task.customerName || "Unknown",
+      type: task.title || task.ticketType || "Service",
+      status: task.status,
+      priority: task.priority || "Medium",
+      time: moment(task.createdAt).fromNow(),
+      isUrgent: task.priority === "High",
+      isNew: moment(task.createdAt).isAfter(startOfToday)
+    }));
 
     res.json({
       stats: {
@@ -89,32 +111,32 @@ export const getEmployeeDashboardStats = async (req, res) => {
 
 export const getEmployeeComplaints = async (req, res) => {
   try {
-    const customers = await Customer.find({ "complaints.0": { $exists: true } }).select("complaints name mobile address");
+    // Get employee name from auth token
+    const employeeName = req.user?.name || req.user?.email;
 
-    let allComplaints = [];
-    customers.forEach(customer => {
-      if (customer.complaints && customer.complaints.length > 0) {
-        customer.complaints.forEach(complaint => {
-          allComplaints.push({
-            ticketId: complaint.complaintId || `TKT-${complaint._id}`,
-            customerName: customer.name,
-            customerMobile: customer.mobile,
-            type: complaint.type,
-            priority: complaint.priority || "Medium",
-            status: complaint.status,
-            date: complaint.date,
-            description: complaint.description,
-            source: "Phone",
-            scheduledDate: "",
-            preferredTime: ""
-          });
-        });
-      }
-    });
+    // Fetch assigned tickets for this employee
+    const assignedTickets = await AssignedTicket.find({ assignedTo: employeeName })
+      .select('ticketId title description priority status dueDate customerName customerPhone customerEmail address createdAt ticketType')
+      .sort({ createdAt: -1 })
+      .lean();
 
-    allComplaints.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const complaints = assignedTickets.map(ticket => ({
+      ticketId: ticket.ticketId || `TKT-${ticket._id}`,
+      customerName: ticket.customerName || 'Unknown',
+      customerMobile: ticket.customerPhone || 'N/A',
+      customerEmail: ticket.customerEmail || 'N/A',
+      address: ticket.address || 'N/A',
+      type: ticket.title || ticket.ticketType || 'Service',
+      priority: ticket.priority || 'Medium',
+      status: ticket.status || 'Pending',
+      date: ticket.createdAt || ticket.dueDate,
+      description: ticket.description || 'No description',
+      source: 'Admin',
+      scheduledDate: ticket.dueDate || '',
+      preferredTime: ''
+    }));
 
-    res.json({ complaints: allComplaints });
+    res.json({ complaints });
   } catch (error) {
     console.error("Get Employee Complaints Error:", error);
     res.status(500).json({ message: "Server error", error: error.message });

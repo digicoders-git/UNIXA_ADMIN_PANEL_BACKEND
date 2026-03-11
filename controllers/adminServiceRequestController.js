@@ -6,15 +6,19 @@ import { v2 as cloudinary } from "cloudinary";
 export const getAllServiceRequests = async (req, res) => {
   try {
     const requests = await ServiceRequest.find()
-      .populate('userId', 'firstName lastName phone email addresses')
-      .populate('amcId')
-      .sort({ createdAt: -1 });
+      .populate('userId', 'firstName lastName email phone addresses')
+      .populate('amcId', 'amcPlanName productName')
+      .select('ticketId customerName customerPhone customerEmail type description priority status date assignedTechnician address userId amcId')
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
 
-    const formattedRequests = requests.map(req => ({
+    res.json(requests.map(req => ({
       ticketId: req.ticketId,
       complaintId: req.ticketId,
       customerName: req.customerName,
       customerPhone: req.customerPhone,
+      customerMobile: req.customerPhone,
       customerEmail: req.customerEmail,
       type: req.type,
       description: req.description,
@@ -22,14 +26,11 @@ export const getAllServiceRequests = async (req, res) => {
       status: req.status,
       date: req.date,
       assignedTechnician: req.assignedTechnician,
-      resolutionNotes: req.resolutionNotes,
-      completionPhoto: req.completionPhoto,
+      address: req.address,
       userId: req.userId,
       amcId: req.amcId,
       _id: req._id
-    }));
-
-    res.json(formattedRequests);
+    })));
   } catch (err) {
     console.error("getAllServiceRequests error:", err);
     res.status(500).json({ message: "Server error" });
@@ -52,8 +53,8 @@ export const updateServiceRequest = async (req, res) => {
     const oldStatus = request.status;
 
     if (status) request.status = status;
-    if (resolutionNotes) request.resolutionNotes = resolutionNotes;
-    if (assignedTechnician) request.assignedTechnician = assignedTechnician;
+    if (resolutionNotes !== undefined) request.resolutionNotes = resolutionNotes;
+    if (assignedTechnician !== undefined) request.assignedTechnician = assignedTechnician;
     if (priority) request.priority = priority;
 
     if (completionPhoto) {

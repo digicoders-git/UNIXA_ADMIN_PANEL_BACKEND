@@ -228,8 +228,10 @@ export const placeOrder = async (req, res) => {
 export const listOrders = async (_req, res) => {
   try {
     const orders = await Order.find()
+      .select('_id status paymentStatus paymentMethod total shippingAddress createdAt items')
       .sort({ createdAt: -1 })
-      .populate("items.product", "name slug");
+      .limit(200)
+      .lean();
     res.json({ orders });
   } catch (err) {
     console.error("listOrders error:", err);
