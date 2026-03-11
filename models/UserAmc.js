@@ -112,7 +112,8 @@ userAmcSchema.virtual('isExpired').get(function() {
 
 // Pre-save hook to auto-update status based on endDate or services used
 userAmcSchema.pre('save', function(next) {
-  if (this.isExpired && this.status === 'Active') {
+  // Only auto-expire if currently Active and conditions are met
+  if (this.status === 'Active' && this.isExpired) {
     this.status = 'Expired';
   }
   next();
@@ -138,9 +139,10 @@ userAmcSchema.statics.updateExpiredAmcs = async function() {
   const now = new Date();
   const result = await this.updateMany(
     { 
+      status: 'Active',
       $or: [
-        { endDate: { $lt: now }, status: 'Active' },
-        { $expr: { $gte: ['$servicesUsed', '$servicesTotal'] }, status: 'Active' }
+        { endDate: { $lt: now } },
+        { $expr: { $gte: ['$servicesUsed', '$servicesTotal'] } }
       ]
     },
     { $set: { status: 'Expired' } }

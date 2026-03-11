@@ -336,20 +336,27 @@ export const renewAmc = async (req, res) => {
       return res.status(404).json({ message: "AMC not found" });
     }
 
+    // Mark old AMC as expired if not already
+    if (oldAmc.status !== 'Expired') {
+      oldAmc.status = 'Expired';
+      oldAmc.notes = `${oldAmc.notes || ''}\n[EXPIRED - Renewed on ${new Date().toLocaleDateString()}]`.trim();
+      await oldAmc.save();
+    }
+
     const start = startDate ? new Date(startDate) : new Date();
     let end;
     if (endDate) {
       end = new Date(endDate);
     } else {
       end = new Date(start);
-      const monthsToAdd = durationMonths || 12; // default to 1 year
+      const monthsToAdd = durationMonths || 12;
       end.setMonth(end.getMonth() + monthsToAdd);
     }
 
     // Create a NEW AMC record to preserve the old (expired) one's history
     const newAmcData = {
       userId: oldAmc.userId,
-      orderId: oldAmc.orderId, // Link to original purchase order
+      orderId: oldAmc.orderId,
       productId: oldAmc.productId,
       productType: oldAmc.productType,
       productName: oldAmc.productName,
@@ -376,7 +383,7 @@ export const renewAmc = async (req, res) => {
 
     const newAmc = await UserAmc.create(newAmcData);
 
-    // Optional: Update the old AMC notes to indicate it was renewed
+    // Update old AMC to reference new one
     oldAmc.notes = `${oldAmc.notes || ''}\n[RENEWED into new ID: ${newAmc._id}]`.trim();
     await oldAmc.save();
 

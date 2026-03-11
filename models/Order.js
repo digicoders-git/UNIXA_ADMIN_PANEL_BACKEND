@@ -59,7 +59,7 @@ const orderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "confirmed", "shipped", "delivered", "cancelled", "returned"],
+      enum: ["pending", "confirmed", "shipped", "delivered", "installed", "cancelled", "returned"],
       default: "pending",
     },
     paymentStatus: {
@@ -80,6 +80,8 @@ const orderSchema = new mongoose.Schema(
     confirmedAt: { type: Date },
     shippedAt: { type: Date },
     deliveredAt: { type: Date },
+    installedAt: { type: Date },
+    installedBy: { type: String },
     cancelledAt: { type: Date },
 
     source: { type: String, default: "online" }, // Added source field

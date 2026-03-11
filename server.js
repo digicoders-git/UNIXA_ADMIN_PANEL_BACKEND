@@ -7,6 +7,8 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import connectDB from "./config/db.js";
 import moment from "moment-timezone";
+import cron from "node-cron";
+import UserAmc from "./models/UserAmc.js";
 
 import adminRoutes from "./routes/adminRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
@@ -74,6 +76,11 @@ const allowedOrigins = [
   "https://user.unixa.co.in",
   "https://www.user.unixa.co.in",
   "https://unixa.co.in",
+  "https://www.unixa.co.in",
+  "https://admin.unixa.co.in",
+  "https://manager.unixa.co.in",
+  "https://employee.unixa.co.in",
+  "https://user.unixa.co.in",
   "https://www.unixa.co.in"
 ].filter(Boolean);
 
@@ -203,6 +210,20 @@ app.listen(PORT, '0.0.0.0', async () => {
   try {
     await connectDB();
     console.log("⏳ Timezone:", moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A"));
+    
+    // 🔄 Schedule AMC status update job - runs every hour
+    cron.schedule('0 * * * *', async () => {
+      try {
+        const result = await UserAmc.updateExpiredAmcs();
+        if (result.modifiedCount > 0) {
+          console.log(`✅ Updated ${result.modifiedCount} expired AMCs at ${moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A")}`);
+        }
+      } catch (error) {
+        console.error('❌ AMC status update job failed:', error);
+      }
+    });
+    
+    console.log('🕐 AMC status update job scheduled (runs every hour)');
   } catch (error) {
     console.error("Startup Database Connection Failed:", error);
   }

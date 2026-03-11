@@ -9,13 +9,11 @@ import Lead from '../models/Lead.js';
 // Create ticket
 export const createTicket = async (req, res) => {
   try {
-    const { ticketType, title, assignedBy, assignedTo, leadId } = req.body;
+    const { ticketType, title, assignedBy, assignedTo, leadId, orderId, serviceRequestId } = req.body;
 
     // Quick validation log
     console.log(`[createTicket] Type: ${ticketType}, Title: ${title}, By: ${assignedBy}, To: ${assignedTo}`);
-    if (ticketType === 'lead') {
-      console.log(`[createTicket] Lead ID: ${leadId}`);
-    }
+    console.log(`[createTicket] OrderID: ${orderId}, ServiceRequestID: ${serviceRequestId}, LeadID: ${leadId}`);
 
     // Manual check for missing fields often causing issues
     if (!ticketType || !title || !assignedBy || !assignedTo) {
@@ -35,6 +33,8 @@ export const createTicket = async (req, res) => {
     console.log(`[createTicket] ✅ Ticket created successfully:`, {
       id: ticket._id,
       type: ticket.ticketType,
+      orderId: ticket.orderId,
+      serviceRequestId: ticket.serviceRequestId,
       leadId: ticket.leadId,
       status: ticket.status,
       assignedTo: ticket.assignedTo
@@ -131,20 +131,41 @@ export const completeTicket = async (req, res) => {
 
     // Handle based on ticket type
     if (ticket.ticketType === 'service_request') {
-      // Update AMC servicesUsed if amcId is present
-      if (ticket.amcId) {
-        const amc = await UserAmc.findById(ticket.amcId);
-        if (amc && amc.servicesUsed < amc.servicesTotal) {
-          amc.servicesUsed += 1;
-          amc.serviceHistory.push({
+      // Find the AMC to update
+      let amcToUpdate = null;
+      let amcIdToUse = ticket.amcId;
+
+      // If amcId is missing on ticket, try to get it from the service request
+      if (!amcIdToUse && ticket.serviceRequestId) {
+        amcIdToUse = ticket.serviceRequestId.amcId;
+        console.log(`[completeTicket] Retrieved amcId from service request: ${amcIdToUse}`);
+      }
+
+      if (amcIdToUse) {
+        // If amcIdToUse is already a document (from populate), use it; otherwise find it
+        if (amcIdToUse._id) {
+          amcToUpdate = await UserAmc.findById(amcIdToUse._id);
+        } else {
+          amcToUpdate = await UserAmc.findById(amcIdToUse);
+        }
+
+        if (amcToUpdate) {
+          console.log(`[completeTicket] Updating AMC: ${amcToUpdate._id}, current used: ${amcToUpdate.servicesUsed}`);
+          amcToUpdate.servicesUsed += 1;
+          amcToUpdate.serviceHistory.push({
             date: new Date(),
             type: 'Regular Service',
             technicianName: ticket.assignedTo,
             notes: `Completed ticket: ${ticket.title}${ticket.notes ? ' - ' + ticket.notes : ''}`,
             complaintId: ticket._id.toString()
           });
-          await amc.save();
+          await amcToUpdate.save();
+          console.log(`[completeTicket] AMC updated successfully. New used count: ${amcToUpdate.servicesUsed}`);
+        } else {
+          console.warn(`[completeTicket] AMC document not found for ID: ${amcIdToUse}`);
         }
+      } else {
+        console.warn(`[completeTicket] No amcId found for ticket: ${ticket._id}`);
       }
 
       // Update ServiceRequest status if linked
@@ -154,18 +175,101 @@ export const completeTicket = async (req, res) => {
           assignedTechnician: ticket.assignedTo,
           completionPhoto: completionPhoto
         });
+        console.log(`[completeTicket] ServiceRequest ${ticket.serviceRequestId._id || ticket.serviceRequestId} marked as Resolved`);
       }
     } else if (ticket.ticketType === 'order' && ticket.orderId) {
-      // Update Order status to delivered
+      // Update Order status to installed
       await Order.findByIdAndUpdate(ticket.orderId, {
-        status: 'delivered',
-        deliveredAt: new Date()
+        status: 'installed',
+        installedAt: new Date(),
+        installedBy: ticket.assignedTo
       });
+      console.log(`[completeTicket] Order ${ticket.orderId._id || ticket.orderId} marked as installed`);
     }
 
     res.json({ message: 'Ticket completed successfully', ticket });
   } catch (error) {
     res.status(500).json({ message: 'Error completing ticket', error: error.message });
+  }
+};
+
+// Get available orders for assignment (not already assigned)
+export const getAvailableOrders = async (req, res) => {
+  try {
+    // Get all assigned tickets with order IDs that are NOT cancelled
+    // Removing ticketType filter to be more robust - if an order is assigned to ANY ticket, it shouldn't show up
+    const assignedTickets = await AssignedTicket.find({ 
+      orderId: { $exists: true, $ne: null },
+      status: { $ne: 'Cancelled' }
+    }).select('orderId').lean();
+    
+    // Extract order IDs and convert to strings for comparison
+    const assignedOrderIds = assignedTickets
+      .map(ticket => ticket.orderId ? ticket.orderId.toString() : null)
+      .filter(id => id !== null);
+    
+    console.log('Assigned Order IDs (Active):', assignedOrderIds);
+    
+    // Get all delivered orders
+    const allDeliveredOrders = await Order.find({
+      status: 'delivered'
+    })
+    .select('_id shippingAddress total createdAt status userId')
+    .sort({ createdAt: -1 })
+    .lean();
+    
+    // Filter out assigned orders
+    const availableOrders = allDeliveredOrders.filter(order => 
+      !assignedOrderIds.includes(order._id.toString())
+    );
+    
+    console.log('Total Delivered Orders:', allDeliveredOrders.length);
+    console.log('Available Orders Count:', availableOrders.length);
+    
+    res.json(availableOrders);
+  } catch (error) {
+    console.error('Error in getAvailableOrders:', error);
+    res.status(500).json({ message: 'Error fetching available orders', error: error.message });
+  }
+};
+
+// Get available service requests for assignment (not already assigned)
+export const getAvailableServiceRequests = async (req, res) => {
+  try {
+    // Get all active assigned tickets (not cancelled) with service request IDs
+    // Removing ticketType filter to be more robust
+    const assignedTickets = await AssignedTicket.find({ 
+      serviceRequestId: { $exists: true, $ne: null },
+      status: { $ne: 'Cancelled' }
+    }).select('serviceRequestId').lean();
+    
+    // Extract service request IDs and convert to strings for comparison
+    const assignedServiceRequestIds = assignedTickets
+      .map(ticket => ticket.serviceRequestId ? ticket.serviceRequestId.toString() : null)
+      .filter(id => id !== null);
+    
+    console.log('Assigned Service Request IDs (Active):', assignedServiceRequestIds);
+    
+    // Get all open service requests
+    const allOpenRequests = await ServiceRequest.find({
+      status: 'Open'
+    })
+    .select('_id ticketId customerName customerPhone customerEmail type address createdAt status amcId userId')
+    .sort({ createdAt: -1 })
+    .lean();
+    
+    // Filter out assigned service requests
+    const availableRequests = allOpenRequests.filter(request => 
+      !assignedServiceRequestIds.includes(request._id.toString())
+    );
+    
+    console.log('Total Open Service Requests:', allOpenRequests.length);
+    console.log('Available Service Requests Count:', availableRequests.length);
+    
+    res.json(availableRequests);
+  } catch (error) {
+    console.error('Error in getAvailableServiceRequests:', error);
+    res.status(500).json({ message: 'Error fetching available service requests', error: error.message });
   }
 };
 
@@ -177,5 +281,38 @@ export const deleteTicket = async (req, res) => {
     res.json({ message: 'Ticket deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting ticket', error: error.message });
+  }
+};
+
+// Debug endpoint to check all assigned tickets
+export const debugAssignedTickets = async (req, res) => {
+  try {
+    const tickets = await AssignedTicket.find()
+      .select('ticketType orderId serviceRequestId title status createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    const orderTickets = tickets.filter(t => t.ticketType === 'order' && t.orderId);
+    const serviceTickets = tickets.filter(t => t.ticketType === 'service_request' && t.serviceRequestId);
+    
+    res.json({
+      totalTickets: tickets.length,
+      orderTickets: orderTickets.map(t => ({ 
+        id: t._id.toString(), 
+        orderId: t.orderId?.toString(), 
+        title: t.title, 
+        status: t.status,
+        created: t.createdAt
+      })),
+      serviceTickets: serviceTickets.map(t => ({ 
+        id: t._id.toString(), 
+        serviceRequestId: t.serviceRequestId?.toString(), 
+        title: t.title, 
+        status: t.status,
+        created: t.createdAt
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Debug error', error: error.message });
   }
 };
