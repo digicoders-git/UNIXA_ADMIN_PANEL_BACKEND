@@ -1,6 +1,9 @@
 import Notification from "../models/Notification.js";
 import AdminNotification from "../models/AdminNotification.js";
 import UserNotification from "../models/UserNotification.js";
+import EmployeeNotification from "../models/EmployeeNotification.js";
+import Employee from "../models/Employee.js";
+import moment from "moment";
 
 // Get All Notifications
 export const getNotifications = async (req, res) => {
@@ -68,13 +71,29 @@ export const markAdminNotificationsRead = async (req, res) => {
 
 // --- USER PANEL NOTIFICATIONS ---
 
-// Get User Notifications (individual)
+// Get User Notifications (individual + broadcast)
 export const getUserNotifications = async (req, res) => {
     try {
         const userId = req.user.sub; // From auth middleware
-        const notifications = await UserNotification.find({ userId }).sort({ createdAt: -1 }).limit(50);
-        res.json(notifications);
+        
+        // Fetch specific notifications for this user
+        const personalNotifications = await UserNotification.find({ userId }).lean();
+        
+        // Fetch broadcast notifications for all or customers
+        const broadcastNotifications = await Notification.find({ 
+            audience: { $in: ["All", "Customers"] },
+            status: "Sent"
+        }).lean();
+
+        // Combine and format
+        const allNotifications = [
+            ...personalNotifications.map(n => ({ ...n, isBroadcast: false })),
+            ...broadcastNotifications.map(n => ({ ...n, isBroadcast: true }))
+        ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        res.json(allNotifications);
     } catch (error) {
+        console.error("getUserNotifications error:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -90,25 +109,96 @@ export const markUserNotificationsRead = async (req, res) => {
     }
 };
 
-// Create User Notification (from admin)
-export const createUserNotification = async (req, res) => {
+// --- EMPLOYEE/MANAGER PANEL NOTIFICATIONS ---
+
+// Get Employee Notifications (individual + broadcast)
+export const getEmployeeNotifications = async (req, res) => {
+    try {
+        const employeeId = req.user.sub || req.user.id || req.user._id;
+        
+        // Fetch specific notifications for this employee
+        const personalNotifications = await EmployeeNotification.find({ employeeId }).lean();
+        
+        // Fetch broadcast notifications for all or employees
+        const broadcastNotifications = await Notification.find({ 
+            audience: { $in: ["All", "Employees"] },
+            status: "Sent"
+        }).lean();
+
+        // Combine and format
+        const allNotifications = [
+            ...personalNotifications.map(n => ({ 
+              id: n._id, 
+              title: n.title,
+              description: n.message, 
+              status: n.isRead ? 'read' : 'unread', 
+              type: n.type?.toLowerCase() || 'info',
+              priority: 'medium',
+              isBroadcast: false, 
+              time: moment(n.createdAt).fromNow() 
+            })),
+            ...broadcastNotifications.map(n => ({ 
+              id: n._id, 
+              title: n.title,
+              description: n.message, 
+              status: 'unread', 
+              type: 'system',
+              priority: 'low',
+              isBroadcast: true, 
+              time: moment(n.sentAt).fromNow() 
+            }))
+        ].sort((a, b) => new Date(b.createdAt || b.sentAt) - new Date(a.createdAt || a.sentAt));
+
+        res.json({ notifications: allNotifications });
+    } catch (error) {
+        console.error("getEmployeeNotifications error:", error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Create Specific Notification (handles both User and Employee)
+export const createSpecificNotification = async (req, res) => {
     try {
         const { userId, title, message, type } = req.body;
         
         if (!userId || !title || !message) {
-            return res.status(400).json({ message: "userId, title, and message are required" });
+            return res.status(400).json({ message: "userId (targetId), title, and message are required" });
         }
-        
-        const notification = await UserNotification.create({
-            userId,
+
+        let notification;
+        // Check if target is Employee or User
+        const employee = await Employee.findById(userId);
+        if (employee) {
+            notification = await EmployeeNotification.create({
+                employeeId: userId,
+                title,
+                message,
+                type: type || 'Info',
+                isRead: false
+            });
+        } else {
+            notification = await UserNotification.create({
+                userId: userId,
+                title,
+                message,
+                type: type || 'Info',
+                isRead: false
+            });
+        }
+
+        // Also save to global history
+        await Notification.create({
             title,
             message,
-            type: type || 'AMC',
-            isRead: false
+            audience: "Specific",
+            type: type || 'Info',
+            status: "Sent",
+            sentAt: new Date()
         });
         
         res.status(201).json({ message: "Notification created", notification });
     } catch (error) {
+        console.error("createSpecificNotification error:", error);
         res.status(500).json({ message: error.message });
     }
 };

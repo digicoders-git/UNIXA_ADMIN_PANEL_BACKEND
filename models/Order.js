@@ -26,6 +26,7 @@ const orderItemSchema = new mongoose.Schema(
     warrantyExpiry: { type: Date },
     amcId: { type: String },
     amcPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'AmcPlan' },
+    amcPlanName: { type: String },
     amcPrice: { type: Number, default: 0 },
   },
   { _id: false }
@@ -82,6 +83,8 @@ const orderSchema = new mongoose.Schema(
     deliveredAt: { type: Date },
     installedAt: { type: Date },
     installedBy: { type: String },
+    installationPhotos: [String],
+    installationRemark: { type: String },
     cancelledAt: { type: Date },
 
     source: { type: String, default: "online" }, // Added source field

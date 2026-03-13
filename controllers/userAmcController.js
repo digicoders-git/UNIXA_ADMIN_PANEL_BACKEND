@@ -3,9 +3,54 @@ import UserAmc from "../models/UserAmc.js";
 import mongoose from "mongoose";
 import Customer from "../models/Customer.js";
 import User from "../models/User.js";
+import Order from "../models/Order.js";
 import AdminNotification from "../models/AdminNotification.js";
 import ServiceRequest from "../models/ServiceRequest.js";
 import AssignedTicket from "../models/AssignedTicket.js";
+
+// Get user AMC history by phone number (Admin)
+export const getUserAmcHistoryByPhone = async (req, res) => {
+  try {
+    const { phone } = req.params;
+
+    // Find user by phone
+    const user = await User.findOne({ phone }).select('_id firstName lastName phone email');
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Get all AMCs for this user
+    const amcs = await UserAmc.find({ userId: user._id })
+      .populate('amcPlanId', 'name')
+      .populate('productId', 'name')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        email: user.email
+      },
+      amcs: amcs.map(amc => ({
+        _id: amc._id,
+        productName: amc.productName,
+        amcPlanName: amc.amcPlanName,
+        amcPlanPrice: amc.amcPlanPrice,
+        startDate: amc.startDate,
+        endDate: amc.endDate,
+        status: amc.status,
+        servicesTotal: amc.servicesTotal || 4,
+        servicesUsed: amc.servicesUsed || 0,
+        createdAt: amc.createdAt
+      }))
+    });
+  } catch (err) {
+    console.error("getUserAmcHistoryByPhone error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
 // Get all user AMCs (Admin)
 export const getAllUserAmcs = async (req, res) => {
@@ -16,7 +61,19 @@ export const getAllUserAmcs = async (req, res) => {
       .populate('productId', 'name')
       .sort({ createdAt: -1 });
 
-    res.json({ amcs });
+    const amcsWithExtras = amcs.map(amc => {
+      const now = new Date();
+      const end = new Date(amc.endDate);
+      const daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
+
+      return {
+        ...amc.toObject(),
+        servicesRemaining: amc.servicesTotal - amc.servicesUsed,
+        daysRemaining
+      };
+    });
+
+    res.json({ amcs: amcsWithExtras });
   } catch (err) {
     console.error("getAllUserAmcs error:", err);
     res.status(500).json({ message: "Server error" });
@@ -336,12 +393,10 @@ export const renewAmc = async (req, res) => {
       return res.status(404).json({ message: "AMC not found" });
     }
 
-    // Mark old AMC as expired if not already
-    if (oldAmc.status !== 'Expired') {
-      oldAmc.status = 'Expired';
-      oldAmc.notes = `${oldAmc.notes || ''}\n[EXPIRED - Renewed on ${new Date().toLocaleDateString()}]`.trim();
-      await oldAmc.save();
-    }
+    // Mark old AMC as Renewed
+    oldAmc.status = 'Renewed';
+    oldAmc.notes = `${oldAmc.notes || ''}\n[RENEWED - Renewed on ${new Date().toLocaleDateString()}]`.trim();
+    await oldAmc.save();
 
     const start = startDate ? new Date(startDate) : new Date();
     let end;
@@ -407,5 +462,124 @@ export const renewAmc = async (req, res) => {
   } catch (err) {
     console.error("renewAmc error:", err);
     res.status(500).json({ message: "Server error", details: err.message });
+  }
+};
+
+// Admin: Create a NEW AMC record manually (for products that don't have one)
+export const createManualAmc = async (req, res) => {
+  try {
+    const { 
+      userId, 
+      orderId, 
+      productId, 
+      productType, 
+      productName, 
+      productImage,
+      amcPlanId,
+      amcPlanName,
+      amcPlanPrice,
+      durationMonths,
+      servicesTotal,
+      startDate 
+    } = req.body;
+
+    if (!userId || !productId || !amcPlanId) {
+      return res.status(400).json({ message: "Missing required fields (userId, productId, amcPlanId)" });
+    }
+
+    const start = startDate ? new Date(startDate) : new Date();
+    const end = new Date(start);
+    const monthsToAdd = (durationMonths !== undefined && durationMonths !== null) ? parseInt(durationMonths) : 12;
+    end.setMonth(end.getMonth() + monthsToAdd);
+
+    const newAmc = await UserAmc.create({
+      userId,
+      orderId: orderId || new mongoose.Types.ObjectId(),
+      productId,
+      productType: productType || 'Product',
+      productName,
+      productImage,
+      amcPlanId,
+      amcPlanName,
+      amcPlanPrice,
+      durationMonths: (durationMonths !== undefined && durationMonths !== null) ? parseInt(durationMonths) : 12,
+      startDate: start,
+      endDate: end,
+      servicesTotal: (servicesTotal !== undefined && servicesTotal !== null) ? parseInt(servicesTotal) : 4,
+      servicesUsed: 0,
+      status: 'Active',
+      amountPaid: amcPlanPrice || 0,
+      paymentStatus: 'Paid',
+      notes: `Manually created by Admin.`,
+      serviceHistory: [{
+        date: new Date(),
+        type: 'Other',
+        technicianName: 'System Admin',
+        notes: `Manual AMC subscription started.`,
+      }]
+    });
+
+    res.status(201).json({
+      message: "AMC created successfully",
+      amc: newAmc
+    });
+  } catch (err) {
+    console.error("createManualAmc error:", err);
+    res.status(500).json({ message: "Server error", details: err.message });
+  }
+};
+
+// Get products eligible for AMC (from user's previous orders)
+export const getEligibleProducts = async (req, res) => {
+  try {
+    const userId = req.user.sub;
+
+    // 1. Get all delivered orders for this user
+    const orders = await Order.find({ 
+      userId, 
+      status: 'delivered',
+      source: { $ne: 'offline' }
+    }).populate('items.product');
+
+    // 2. Extract unique products from these orders
+    const productsMap = new Map();
+    
+    for (const order of orders) {
+      for (const item of order.items) {
+        if (!item.product) continue;
+        
+        const key = item.product._id.toString();
+        if (!productsMap.has(key)) {
+          productsMap.set(key, {
+            _id: item.product._id,
+            name: item.product.name,
+            image: item.product.mainImage?.url || item.product.img || "",
+            orderId: order._id,
+            purchaseDate: order.createdAt,
+            productType: item.productType || 'Product'
+          });
+        }
+      }
+    }
+
+    // 3. Get existing active AMCs to mark which products already have coverage
+    const activeAmcs = await UserAmc.find({ 
+      userId, 
+      status: 'Active' 
+    });
+
+    const products = Array.from(productsMap.values()).map(product => {
+      const existingAmc = activeAmcs.find(amc => amc.productId.toString() === product._id.toString());
+      return {
+        ...product,
+        hasActiveAmc: !!existingAmc,
+        amcId: existingAmc?._id || null
+      };
+    });
+
+    res.json({ products });
+  } catch (err) {
+    console.error("getEligibleProducts error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };

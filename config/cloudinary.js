@@ -222,6 +222,43 @@ const uploadBlogImages = (req, res, next) => {
   next();
 };
 
+// =====================================================
+// ================= PROFILE PICTURES ==================
+// =====================================================
+
+const profileStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "glassecommerce_profiles",
+    resource_type: "auto",
+  },
+});
+
+const profileMulter = multer({
+  storage: profileStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|webp|gif/;
+    const extname = allowedTypes.test(file.originalname.toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  },
+});
+
+const profileUpload = profileMulter.single("profilePicture");
+const uploadProfilePicture = (req, res, next) => {
+  const contentType = req.headers["content-type"] || "";
+  if (contentType.toLowerCase().includes("multipart/form-data")) {
+    return profileUpload(req, res, next);
+  }
+  next();
+};
+
 // ================= EXPORT =================
 export {
   cloudinary,
@@ -231,4 +268,5 @@ export {
   uploadRoPartImage,
   uploadRentalPlanImage,
   uploadBlogImages,
+  uploadProfilePicture,
 };

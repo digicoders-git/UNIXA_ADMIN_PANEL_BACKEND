@@ -4,7 +4,7 @@ import AmcPlan from "../models/AmcPlan.js";
 export const createPlan = async (req, res) => {
   try {
     const { name, amcType, price, durationMonths, features, color, isPopular, isActive, servicesIncluded, partsIncluded } = req.body;
-    
+
     const newPlan = new AmcPlan({
       name,
       amcType,
@@ -44,7 +44,7 @@ export const updatePlan = async (req, res) => {
   try {
     const { id } = req.params;
     const plan = await AmcPlan.findByIdAndUpdate(id, req.body, { new: true });
-    
+
     if (!plan) return res.status(404).json({ message: "Plan not found" });
 
     res.status(200).json({ success: true, plan });
@@ -69,15 +69,15 @@ export const assignProducts = async (req, res) => {
   try {
     const { id } = req.params;
     const { productIds } = req.body;
-    
+
     const plan = await AmcPlan.findByIdAndUpdate(
       id,
       { productIds },
       { new: true }
     );
-    
+
     if (!plan) return res.status(404).json({ message: "Plan not found" });
-    
+
     res.status(200).json({ success: true, plan });
   } catch (error) {
     res.status(500).json({ message: "Error assigning products", error: error.message });
@@ -89,9 +89,9 @@ export const getAmcProducts = async (req, res) => {
   try {
     const { id } = req.params;
     const plan = await AmcPlan.findById(id).populate("productIds");
-    
+
     if (!plan) return res.status(404).json({ message: "Plan not found" });
-    
+
     res.status(200).json({ success: true, productIds: plan.productIds });
   } catch (error) {
     res.status(500).json({ message: "Error fetching products", error: error.message });

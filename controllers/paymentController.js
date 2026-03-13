@@ -26,7 +26,7 @@ if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
 export const createPaymentOrder = async (req, res) => {
   try {
     const { amount, currency = "INR", receipt } = req.body;
-    
+
     if (!razorpay) {
       return res.status(503).json({ message: "Payment service is currently unavailable (Keys missing)" });
     }
@@ -42,7 +42,7 @@ export const createPaymentOrder = async (req, res) => {
     };
 
     const order = await razorpay.orders.create(options);
-    
+
     res.json({
       success: true,
       order,
@@ -78,9 +78,9 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
       .digest("hex");
 
     if (expectedSignature !== razorpay_signature) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Payment verification failed" 
+      return res.status(400).json({
+        success: false,
+        message: "Payment verification failed"
       });
     }
 
@@ -149,9 +149,9 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
     });
   } catch (err) {
     console.error("verifyPaymentAndCreateOrder error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Payment verification failed" 
+    res.status(500).json({
+      success: false,
+      message: "Payment verification failed"
     });
   }
 };
@@ -168,9 +168,9 @@ export const handlePaymentFailure = async (req, res) => {
     });
   } catch (err) {
     console.error("handlePaymentFailure error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Error handling payment failure" 
+    res.status(500).json({
+      success: false,
+      message: "Error handling payment failure"
     });
   }
 };
@@ -192,7 +192,7 @@ export const verifyRentalPayment = async (req, res) => {
     } = req.body;
 
     if (!razorpay) {
-       return res.status(503).json({ message: "Payment service unavailable" });
+      return res.status(503).json({ message: "Payment service unavailable" });
     }
 
     // Verify signature
@@ -222,65 +222,65 @@ export const verifyRentalPayment = async (req, res) => {
 
     // 2. Link to Customer (Rental Logic)
     if (phone) {
-        const normalizedPhone = phone.replace(/\D/g, "").slice(-10);
-        let customer = await Customer.findOne({ mobile: new RegExp(normalizedPhone + "$") });
-        
-        // Find Plan details for creating rental record
-        let machineModel = "Unknown";
-        let machineImage = "";
-        
-        // Lookup Plan Logic
-        let resolvedPlanName = "Paid Rental Request";
-        if (planId) {
-             try {
-                const plan = await RentalPlan.findById(planId).populate('productId');
-                if (plan) {
-                    machineModel = plan.productId?.name || plan.planName;
-                    machineImage = plan.image?.url || plan.productId?.mainImage?.url;
-                    resolvedPlanName = plan.planName;
-                }
-            } catch (e) { console.error("Plan lookup failed", e);}
-        }
+      const normalizedPhone = phone.replace(/\D/g, "").slice(-10);
+      let customer = await Customer.findOne({ mobile: new RegExp(normalizedPhone + "$") });
 
-        const rentalData = {
-            planId: planId || null,
-            planName: resolvedPlanName,
-            amount: amount || 0,
-            status: "Pending",
-            machineModel,
-            machineImage,
-            startDate: new Date(),
-            paymentStatus: "Paid",
-            paymentId: razorpay_payment_id
-        };
+      // Find Plan details for creating rental record
+      let machineModel = "Unknown";
+      let machineImage = "";
 
-        if (customer) {
-            if (req.body.isMonthlyRent && customer.rentalDetails && customer.rentalDetails.status === 'Active') {
-                // Handle Monthly Rent Payment for Existing Active Customers
-                customer.rentalDetails.paymentStatus = "Paid";
-                customer.rentalDetails.paymentId = razorpay_payment_id;
-                
-                // Extend nextDueDate by 1 month
-                let currentDue = customer.rentalDetails.nextDueDate ? new Date(customer.rentalDetails.nextDueDate) : new Date();
-                // Ensure we don't set a date in the past if they are very late? 
-                // For simplicity, just add 30 days to the current due date or now if undefined
-                currentDue.setMonth(currentDue.getMonth() + 1);
-                customer.rentalDetails.nextDueDate = currentDue;
-                
-            } else {
-                // New Rental or Overwrite
-                customer.rentalDetails = rentalData;
-            }
-            await customer.save();
+      // Lookup Plan Logic
+      let resolvedPlanName = "Paid Rental Request";
+      if (planId) {
+        try {
+          const plan = await RentalPlan.findById(planId).populate('productId');
+          if (plan) {
+            machineModel = plan.productId?.name || plan.planName;
+            machineImage = plan.image?.url || plan.productId?.mainImage?.url;
+            resolvedPlanName = plan.planName;
+          }
+        } catch (e) { console.error("Plan lookup failed", e); }
+      }
+
+      const rentalData = {
+        planId: planId || null,
+        planName: resolvedPlanName,
+        amount: amount || 0,
+        status: "Pending",
+        machineModel,
+        machineImage,
+        startDate: new Date(),
+        paymentStatus: "Paid",
+        paymentId: razorpay_payment_id
+      };
+
+      if (customer) {
+        if (req.body.isMonthlyRent && customer.rentalDetails && customer.rentalDetails.status === 'Active') {
+          // Handle Monthly Rent Payment for Existing Active Customers
+          customer.rentalDetails.paymentStatus = "Paid";
+          customer.rentalDetails.paymentId = razorpay_payment_id;
+
+          // Extend nextDueDate by 1 month
+          let currentDue = customer.rentalDetails.nextDueDate ? new Date(customer.rentalDetails.nextDueDate) : new Date();
+          // Ensure we don't set a date in the past if they are very late? 
+          // For simplicity, just add 30 days to the current due date or now if undefined
+          currentDue.setMonth(currentDue.getMonth() + 1);
+          customer.rentalDetails.nextDueDate = currentDue;
+
         } else {
-            await Customer.create({
-                name,
-                mobile: phone,
-                email: email || "",
-                type: "New",
-                rentalDetails: rentalData
-            });
+          // New Rental or Overwrite
+          customer.rentalDetails = rentalData;
         }
+        await customer.save();
+      } else {
+        await Customer.create({
+          name,
+          mobile: phone,
+          email: email || "",
+          type: "New",
+          rentalDetails: rentalData
+        });
+      }
     }
 
     // 3. Create Transaction Entry for Rental
@@ -298,14 +298,14 @@ export const verifyRentalPayment = async (req, res) => {
 
     // 4. Admin Notification
     try {
-        await AdminNotification.create({
-            title: "New Paid Rental Booking",
-            message: `Payment of ₹${amount} received from ${name} for Rental.`,
-            type: "Enquiry",
-            refId: enquiry._id
-        });
+      await AdminNotification.create({
+        title: "New Paid Rental Booking",
+        message: `Payment of ₹${amount} received from ${name} for Rental.`,
+        type: "Enquiry",
+        refId: enquiry._id
+      });
     } catch (e) {
-        console.error("Notif error", e);
+      console.error("Notif error", e);
     }
 
     res.json({

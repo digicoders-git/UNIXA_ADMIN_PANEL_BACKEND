@@ -3,6 +3,150 @@ import UserAmc from "../models/UserAmc.js";
 import User from "../models/User.js";
 import UserNotification from "../models/UserNotification.js";
 import Transaction from "../models/Transaction.js";
+import Order from "../models/Order.js";
+
+// Get Complete Customer History (Orders + AMCs)
+export const getCustomerCompleteHistory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log("getCustomerCompleteHistory called with id:", id);
+
+    // Try to find customer by phone number (since we're passing phone as _id)
+    let customer = null;
+
+    // First try to find by phone
+    customer = await Customer.findOne({ mobile: id });
+
+    // If not found in Customer collection, search in orders by phone
+    if (!customer) {
+      console.log("Customer not found in Customer collection, searching in orders...");
+      const order = await Order.findOne({ "shippingAddress.phone": id });
+      if (!order) {
+        console.log("No orders found for phone:", id);
+        return res.status(404).json({ message: "Customer not found" });
+      }
+      // Create a temporary customer object from order data
+      customer = {
+        _id: id,
+        name: order.shippingAddress.name,
+        mobile: id,
+        email: order.shippingAddress.email || "",
+        address: {
+          house: order.shippingAddress.addressLine1 || "",
+          area: order.shippingAddress.addressLine2 || "",
+          city: order.shippingAddress.city || "",
+          pincode: order.shippingAddress.pincode || ""
+        }
+      };
+    }
+
+    // Get all orders for this customer (by phone number)
+    const orders = await Order.find({
+      "shippingAddress.phone": id
+    }).sort({ createdAt: -1 }).lean();
+
+    console.log("Found orders:", orders.length);
+
+    // Get all AMCs for this customer
+    let allAmcs = [];
+    const mongoose = (await import("mongoose")).default;
+
+    // 1. Find User by phone to get potential userId
+    const user = await User.findOne({ phone: customer.mobile || id });
+    const userIds = [];
+    if (mongoose.Types.ObjectId.isValid(id)) userIds.push(id);
+    if (user) userIds.push(user._id);
+
+    // Get order IDs to search by reference
+    const orderIds = orders.map(o => o._id);
+
+    // 2. Search in UserAmc collection
+    const userAmcs = await UserAmc.find({
+      $or: [
+        { userId: { $in: userIds } },
+        { orderId: { $in: orderIds } }
+      ]
+    }).populate('amcPlanId').sort({ createdAt: -1 }).lean();
+
+    // 3. Include AMCs from Customer model (Manual entries)
+    // Convert Mongoose document to plain object if needed
+    const customerObj = typeof customer.toObject === 'function' ? customer.toObject() : customer;
+
+    if (customerObj.amcDetails && customerObj.amcDetails.planName) {
+      allAmcs.push({
+        ...customerObj.amcDetails,
+        source: "Manual"
+      });
+    }
+
+    // Include archived AMC history from Customer model
+    if (customerObj.amcHistory && Array.isArray(customerObj.amcHistory)) {
+      customerObj.amcHistory.forEach(h => {
+        allAmcs.push({
+          ...h,
+          source: "Manual History"
+        });
+      });
+    }
+
+    // Merge UserAmcs into allAmcs
+    userAmcs.forEach(amc => {
+      allAmcs.push({
+        ...amc,
+        source: "Online"
+      });
+    });
+
+    console.log("Total consolidated AMCs:", allAmcs.length);
+
+    // Format orders data
+    const formattedOrders = orders.map(order => ({
+      _id: order._id,
+      productName: order.items?.[0]?.productName || "N/A",
+      quantity: order.items?.[0]?.quantity || 1,
+      total: order.total,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      source: order.source || "online",
+      shippingAddress: order.shippingAddress,
+      createdAt: order.createdAt,
+      items: order.items
+    }));
+
+    // Format consolidated AMCs data
+    const formattedAmcs = allAmcs.map(amc => ({
+      _id: amc._id || amc.amcId,
+      productName: amc.productName || amc.planName, // Adjust based on source
+      amcPlanName: amc.amcPlanName || amc.planName,
+      status: amc.status,
+      paymentStatus: amc.paymentStatus,
+      startDate: amc.startDate,
+      endDate: amc.endDate,
+      amcPlanPrice: amc.amcPlanPrice || amc.amount,
+      servicesTotal: amc.servicesTotal,
+      servicesUsed: amc.servicesUsed,
+      serviceHistory: amc.serviceHistory || [],
+      createdAt: amc.createdAt,
+      source: amc.source
+    }));
+
+    res.json({
+      customer: {
+        _id: customer._id,
+        userId: user?._id || customer.userId, // Include User ID if found
+        name: customer.name,
+        mobile: customer.mobile,
+        email: customer.email || "N/A",
+        address: customer.address
+      },
+      orders: formattedOrders,
+      amcs: formattedAmcs
+    });
+  } catch (error) {
+    console.error("getCustomerCompleteHistory error:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
 
 // Get all customers
 export const getCustomers = async (req, res) => {
@@ -59,7 +203,19 @@ export const getAllComplaints = async (req, res) => {
 // Get single customer
 export const getCustomerById = async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    const { id } = req.params;
+    let customer = null;
+
+    // Try to find by ObjectId first
+    try {
+      customer = await Customer.findById(id);
+    } catch (err) {
+      // If not a valid ObjectId, try finding by phone number
+      if (err.kind === 'ObjectId') {
+        customer = await Customer.findOne({ mobile: id });
+      }
+    }
+
     if (!customer) return res.status(404).json({ message: "Customer not found" });
     res.json(customer);
   } catch (error) {
@@ -81,15 +237,56 @@ export const createCustomer = async (req, res) => {
 // Update customer
 export const updateCustomer = async (req, res) => {
   try {
-    const updatedCustomer = await Customer.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-    if (!updatedCustomer)
-      return res.status(404).json({ message: "Customer not found" });
+    const { id } = req.params;
+    let updatedCustomer = null;
+
+    console.log('updateCustomer called with id:', id);
+    console.log('Request body keys:', Object.keys(req.body));
+
+    // Sanitize the data - remove undefined values
+    const cleanData = {};
+    for (const [key, value] of Object.entries(req.body)) {
+      if (value !== undefined && value !== null && value !== '') {
+        cleanData[key] = value;
+      }
+    }
+
+    // Try to find by ObjectId first
+    try {
+      updatedCustomer = await Customer.findByIdAndUpdate(
+        id,
+        cleanData,
+        { new: true, runValidators: false }
+      );
+    } catch (err) {
+      console.log('ObjectId lookup failed:', err.kind);
+      // If not a valid ObjectId, try finding by phone number
+      if (err.kind === 'ObjectId' || !updatedCustomer) {
+        updatedCustomer = await Customer.findOneAndUpdate(
+          { mobile: id },
+          cleanData,
+          { new: true, runValidators: false }
+        );
+      }
+    }
+
+    // If still not found, create new customer with phone as identifier
+    if (!updatedCustomer) {
+      const existingByPhone = await Customer.findOne({ mobile: id });
+      if (existingByPhone) {
+        updatedCustomer = existingByPhone;
+      } else {
+        updatedCustomer = await Customer.create({
+          ...cleanData,
+          mobile: id
+        });
+      }
+    }
+
+    console.log('Customer updated successfully');
     res.json(updatedCustomer);
   } catch (error) {
+    console.error('updateCustomer error:', error.message);
     res.status(400).json({ message: error.message });
   }
 };
@@ -97,7 +294,20 @@ export const updateCustomer = async (req, res) => {
 // Delete customer
 export const deleteCustomer = async (req, res) => {
   try {
-    await Customer.findByIdAndDelete(req.params.id);
+    const { id } = req.params;
+    let result = null;
+
+    // Try to delete by ObjectId first
+    try {
+      result = await Customer.findByIdAndDelete(id);
+    } catch (err) {
+      // If not a valid ObjectId, try deleting by phone number
+      if (err.kind === 'ObjectId') {
+        result = await Customer.findOneAndDelete({ mobile: id });
+      }
+    }
+
+    if (!result) return res.status(404).json({ message: "Customer not found" });
     res.json({ message: "Customer deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -107,14 +317,22 @@ export const deleteCustomer = async (req, res) => {
 // Add Service History
 export const addService = async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    const { id } = req.params;
+    let customer = null;
+
+    // Try to find by ObjectId first
+    try {
+      customer = await Customer.findById(id);
+    } catch (err) {
+      // If not a valid ObjectId, try finding by phone number
+      if (err.kind === 'ObjectId') {
+        customer = await Customer.findOne({ mobile: id });
+      }
+    }
+
     if (!customer) return res.status(404).json({ message: "Customer not found" });
 
     customer.serviceHistory.push(req.body);
-
-    // Update next due date logic or other fields if needed
-    // For now assuming req.body contains the service object
-
     await customer.save();
     res.json(customer);
   } catch (error) {
@@ -125,10 +343,21 @@ export const addService = async (req, res) => {
 // Add Complaint
 export const addComplaint = async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    const { id } = req.params;
+    let customer = null;
+
+    // Try to find by ObjectId first
+    try {
+      customer = await Customer.findById(id);
+    } catch (err) {
+      // If not a valid ObjectId, try finding by phone number
+      if (err.kind === 'ObjectId') {
+        customer = await Customer.findOne({ mobile: id });
+      }
+    }
+
     if (!customer) return res.status(404).json({ message: "Customer not found" });
 
-    // Get the highest complaint number
     const allCustomers = await Customer.find({ "complaints.0": { $exists: true } });
     let maxNumber = 0;
 
@@ -160,7 +389,6 @@ export const getAMCDashboard = async (req, res) => {
 
     let query = { "amcDetails.planName": { $exists: true, $ne: "" } };
 
-    // Status Filter
     if (status && status !== 'All') {
       const today = new Date();
       if (status === 'Active') query["amcDetails.status"] = 'Active';
@@ -173,7 +401,6 @@ export const getAMCDashboard = async (req, res) => {
       }
     }
 
-    // Search Filter
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -189,7 +416,6 @@ export const getAMCDashboard = async (req, res) => {
 
     const customers = await Customer.find(query).sort({ "amcDetails.endDate": 1 });
 
-    // Calculate Stats
     const today = new Date();
     const next30Days = new Date();
     next30Days.setDate(today.getDate() + 30);
@@ -204,7 +430,6 @@ export const getAMCDashboard = async (req, res) => {
 
     const allAmcCustomers = await Customer.find({ "amcDetails.planName": { $exists: true, $ne: "" } });
 
-    // Product-wise stats
     const productMap = {};
 
     allAmcCustomers.forEach(c => {
@@ -220,7 +445,6 @@ export const getAMCDashboard = async (req, res) => {
       }
       stats.revenue += c.amcDetails.amountPaid || 0;
 
-      // Product stats
       if (c.purifiers && c.purifiers.length > 0) {
         const product = c.purifiers[0];
         const productName = `${product.brand || 'Unknown'} ${product.model || ''}`;
@@ -252,7 +476,6 @@ export const createAMC = async (req, res) => {
   try {
     const { customerId, planName, planType, amcType, durationMonths, startDate, amount, notes, assignedTechnician, servicesTotal, partsIncluded } = req.body;
 
-    // If no customerId provided, return error
     if (!customerId) {
       return res.status(400).json({ message: "Customer ID is required" });
     }
@@ -278,12 +501,11 @@ export const createAMC = async (req, res) => {
       amount: amount,
       amountPaid: 0,
       paymentStatus: "Pending",
-      status: "Active", // Default to active, or pending payment
+      status: "Active",
       assignedTechnician,
       notes
     };
 
-    // If existing AMC exists, archive it?
     if (customer.amcDetails && customer.amcDetails.planName) {
       customer.amcHistory.push(customer.amcDetails);
     }
@@ -293,7 +515,6 @@ export const createAMC = async (req, res) => {
 
     await customer.save();
 
-    // Create Transaction for AMC
     try {
       await Transaction.create({
         transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -319,15 +540,14 @@ export const createAMC = async (req, res) => {
 // Renew AMC
 export const renewAMC = async (req, res) => {
   try {
-    const { id } = req.params; // Customer ID
+    const { id } = req.params;
     const { planName, planType, durationMonths, startDate, amount, paymentMode, paymentStatus, amountPaid } = req.body;
 
     const customer = await Customer.findById(id);
     if (!customer) return res.status(404).json({ message: "Customer not found" });
 
-    // Archive current
     if (customer.amcDetails) {
-      customer.amcDetails.status = "Expired"; // Mark old as expired
+      customer.amcDetails.status = "Expired";
       customer.amcHistory.push(customer.amcDetails);
     }
 
@@ -342,7 +562,7 @@ export const renewAMC = async (req, res) => {
       startDate: start,
       endDate: end,
       durationMonths,
-      servicesTotal: req.body.servicesTotal || 3, // Default or from body
+      servicesTotal: req.body.servicesTotal || 3,
       servicesUsed: 0,
       partsIncluded: req.body.partsIncluded || false,
       amount,
@@ -350,14 +570,13 @@ export const renewAMC = async (req, res) => {
       paymentMode,
       paymentStatus: paymentStatus || "Pending",
       status: "Active",
-      assignedTechnician: req.body.assignedTechnician || customer.amcDetails.assignedTechnician, // Keep prev tech if not changed
+      assignedTechnician: req.body.assignedTechnician || customer.amcDetails.assignedTechnician,
       notes: req.body.notes
     };
 
     customer.amcDetails = newAMC;
     await customer.save();
 
-    // Create Transaction for AMC Renewal
     try {
       await Transaction.create({
         transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -390,11 +609,9 @@ export const updateComplaintStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid Ticket ID" });
     }
 
-    // Try to find by complaintId first, then by _id
     let query = { "complaints.complaintId": ticketId };
     let customer = await Customer.findOne(query);
 
-    // If not found by complaintId, try by _id
     if (!customer) {
       query = { "complaints._id": ticketId };
       customer = await Customer.findOne(query);
@@ -404,7 +621,6 @@ export const updateComplaintStatus = async (req, res) => {
       return res.status(404).json({ message: "Complaint not found" });
     }
 
-    // Update the complaint
     const updateFields = {};
     if (status) updateFields["complaints.$.status"] = status;
     if (resolutionNotes) updateFields["complaints.$.resolutionNotes"] = resolutionNotes;
@@ -417,7 +633,6 @@ export const updateComplaintStatus = async (req, res) => {
       { new: true }
     );
 
-    // SYNC TO USER AMC IF APPLICABLE
     try {
       const updateObj = {};
       if (assignedTechnician) updateObj["serviceHistory.$.technicianName"] = assignedTechnician;
@@ -433,7 +648,6 @@ export const updateComplaintStatus = async (req, res) => {
       console.error("Failed to sync status to UserAmc:", syncErr);
     }
 
-    // CREATE NOTIFICATION FOR USER
     try {
       const userRecord = await User.findOne({ $or: [{ phone: customer.mobile }, { email: customer.email }] });
       if (userRecord) {
@@ -466,7 +680,6 @@ export const updateComplaintStatus = async (req, res) => {
   }
 };
 
-
 // Delete Complaint
 export const deleteComplaint = async (req, res) => {
   try {
@@ -476,11 +689,9 @@ export const deleteComplaint = async (req, res) => {
       return res.status(400).json({ message: "Invalid Ticket ID" });
     }
 
-    // Try to find by complaintId first, then by _id
     let query = { "complaints.complaintId": ticketId };
     let customer = await Customer.findOne(query);
 
-    // If not found by complaintId, try by _id
     if (!customer) {
       query = { "complaints._id": ticketId };
       customer = await Customer.findOne(query);
@@ -490,7 +701,6 @@ export const deleteComplaint = async (req, res) => {
       return res.status(404).json({ message: "Complaint not found" });
     }
 
-    // Remove the complaint from array
     customer.complaints = customer.complaints.filter(
       c => c._id.toString() !== ticketId && c.complaintId !== ticketId
     );

@@ -26,8 +26,14 @@ const assignedTicketSchema = new mongoose.Schema({
   address: { type: String },
   notes: { type: String },
   amcId: { type: mongoose.Schema.Types.ObjectId, ref: 'UserAmc' },
-  completionPhoto: { type: String },
-  completedAt: { type: Date }
+  completionPhotos: [{ type: String }],
+  completionRemark: { type: String },
+  completedAt: { type: Date },
+  visitType: { type: String, enum: ['AMC_REMINDER', 'SERVICE_REQUEST', 'INSTALLATION'], default: 'SERVICE_REQUEST' },
+  assignedByRole: { type: String, enum: ['Admin', 'Manager'], default: 'Admin' },
+  employeeFeedback: { type: String },
+  visitPhotos: [{ type: String }],
+  customerFeedback: { type: String }
 }, { timestamps: true });
 
 // Compound indexes for optimized queries

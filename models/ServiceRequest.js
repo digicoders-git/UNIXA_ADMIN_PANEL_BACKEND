@@ -39,7 +39,8 @@ const serviceRequestSchema = new mongoose.Schema({
   },
   assignedTechnician: String,
   resolutionNotes: String,
-  completionPhoto: String,
+  completionRemark: String,
+  completionPhotos: [String],
   date: {
     type: Date,
     default: Date.now

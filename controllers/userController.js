@@ -1,39 +1,37 @@
 // controllers/userController.js
 import "dotenv/config";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
 import User from "../models/User.js";
 
 const signJwt = (user) => {
   const secret = process.env.JWT_SECRET || "fallback_secret";
   return jwt.sign(
-    { sub: String(user._id), email: user.email, tv: user.tokenVersion || 0 },
+    { sub: String(user._id), email: user.email, phone: user.phone, tv: user.tokenVersion || 0 },
     secret,
     { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
   );
 };
 
-const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
+// Generate OTP
+const generateOTP = () => {
+  return "123456"; // Fixed OTP for development
+};
+
+// Send OTP (Mock function - replace with real SMS/Email service)
+const sendOTP = async (identifier, otp) => {
+  console.log(`Sending OTP ${otp} to ${identifier}`);
+  // TODO: Integrate with SMS/Email service
+  return true;
+};
 
 // Register User
 export const registerUser = async (req, res) => {
   try {
-    console.log("Registering user:", req.body.email);
-    const { firstName, lastName, email, phone, password, dateOfBirth, gender } = req.body;
+    console.log("Registering user:", req.body.phone);
+    const { firstName, lastName, email, phone, gender, address, city, state, pincode } = req.body;
     
-    if (!firstName || !lastName || !email || !phone || !password) {
-      return res.status(400).json({ message: "First name, last name, email, phone and password are required" });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
-    }
-
-    // Check email exists (case-insensitive)
-    const emailExists = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } }).lean();
-    if (emailExists) {
-      console.log("Email already exists:", email, "Found:", emailExists.email);
-      return res.status(409).json({ message: "User already exists with this email" });
+    if (!firstName || !lastName || !phone) {
+      return res.status(400).json({ message: "First name, last name and phone are required" });
     }
 
     // Check phone exists
@@ -43,20 +41,28 @@ export const registerUser = async (req, res) => {
       return res.status(409).json({ message: "User already exists with this phone number" });
     }
 
-    console.log("No existing user found. Proceeding with registration...");
+    // Check email exists if provided (case-insensitive)
+    if (email) {
+      const emailExists = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } }).lean();
+      if (emailExists) {
+        console.log("Email already exists:", email, "Found:", emailExists.email);
+        return res.status(409).json({ message: "User already exists with this email" });
+      }
+    }
 
-    console.log("Hashing password...");
-    const hash = await bcrypt.hash(password, SALT_ROUNDS);
+    console.log("No existing user found. Proceeding with registration...");
     
     console.log("Creating user document...");
     const user = await User.create({ 
       firstName, 
       lastName, 
-      email, 
+      email: email || undefined,
       phone, 
-      password: hash,
-      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       gender: gender ? gender.toLowerCase() : undefined,
+      address,
+      city,
+      state,
+      pincode,
       isActive: true,
       tokenVersion: 0
     });
@@ -64,7 +70,7 @@ export const registerUser = async (req, res) => {
     console.log("Signing JWT...");
     const token = signJwt(user);
 
-    console.log("User registered successfully:", user.email);
+    console.log("User registered successfully:", user.phone);
     res.status(201).json({
       message: "Registration successful",
       user: { 
@@ -73,8 +79,11 @@ export const registerUser = async (req, res) => {
         lastName: user.lastName,
         email: user.email, 
         phone: user.phone,
-        dateOfBirth: user.dateOfBirth,
-        gender: user.gender
+        gender: user.gender,
+        address: user.address,
+        city: user.city,
+        state: user.state,
+        pincode: user.pincode
       },
       token
     });
@@ -92,64 +101,128 @@ export const registerUser = async (req, res) => {
   }
 };
 
-// Login User
-export const loginUser = async (req, res) => {
+// Send OTP for Login
+export const sendLoginOTP = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    console.log("Login attempt:", email);
+    const { identifier } = req.body; // phone or email
     
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+    if (!identifier) {
+      return res.status(400).json({ message: "Phone number or email is required" });
     }
 
-    // Attempt to find user (older users might not have isActive: true set explicitly)
-    const user = await User.findOne({ email }).select("+password +tokenVersion");
+    // Check if identifier is email or phone
+    const isEmail = /\S+@\S+\.\S+/.test(identifier);
+    const isPhone = /^[6-9]\d{9}$/.test(identifier);
     
+    if (!isEmail && !isPhone) {
+      return res.status(400).json({ message: "Please enter a valid phone number or email" });
+    }
+
+    // Find user by phone or email
+    let user;
+    if (isEmail) {
+      user = await User.findOne({ email: { $regex: new RegExp(`^${identifier}$`, 'i') } });
+    } else {
+      user = await User.findOne({ phone: identifier });
+    }
+
     if (!user) {
-      console.log("Login failed: User not found");
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(404).json({ message: "User not found. Please register first." });
     }
 
-    if (user.isActive === false) {
-      console.log("Login failed: User inactive");
+    if (!user.isActive) {
       return res.status(401).json({ message: "Account is inactive" });
     }
 
-    console.log("Comparing password...");
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) {
-      console.log("Login failed: Password mismatch");
-      return res.status(401).json({ message: "Invalid credentials" });
+    // Generate OTP
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Save OTP to user
+    user.otp = otp;
+    user.otpExpiry = otpExpiry;
+    await user.save();
+
+    // Send OTP
+    await sendOTP(identifier, otp);
+
+    console.log(`Fixed OTP sent to ${identifier}: 123456`);
+    res.json({ 
+      message: "OTP sent successfully",
+      identifier: identifier,
+      otp: "123456" // Show OTP in response for development
+    });
+  } catch (err) {
+    console.error("Send OTP error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// Verify OTP and Login
+export const verifyOTPAndLogin = async (req, res) => {
+  try {
+    const { identifier, otp } = req.body;
+    
+    if (!identifier || !otp) {
+      return res.status(400).json({ message: "Phone/email and OTP are required" });
     }
 
-    // Update last login
+    // Find user by phone or email
+    const isEmail = /\S+@\S+\.\S+/.test(identifier);
+    let user;
+    
+    if (isEmail) {
+      user = await User.findOne({ email: { $regex: new RegExp(`^${identifier}$`, 'i') } }).select("+otp +otpExpiry");
+    } else {
+      user = await User.findOne({ phone: identifier }).select("+otp +otpExpiry");
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!user.otp || !user.otpExpiry) {
+      return res.status(400).json({ message: "No OTP found. Please request a new OTP." });
+    }
+
+    if (new Date() > user.otpExpiry) {
+      return res.status(400).json({ message: "OTP has expired. Please request a new OTP." });
+    }
+
+    if (user.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    // Clear OTP after successful verification
+    user.otp = undefined;
+    user.otpExpiry = undefined;
     user.lastLogin = new Date();
     await user.save();
 
-    console.log("Signing JWT...");
+    // Generate JWT token
     const token = signJwt(user);
 
-    console.log("Login successful:", email);
+    console.log(`Login successful for: ${identifier}`);
     res.json({
       message: "Login successful",
-      user: { 
-        id: user._id, 
+      user: {
+        _id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
-        email: user.email, 
+        email: user.email,
         phone: user.phone,
-        dateOfBirth: user.dateOfBirth,
         gender: user.gender,
+        address: user.address,
+        city: user.city,
+        state: user.state,
+        pincode: user.pincode,
         lastLogin: user.lastLogin
       },
       token
     });
   } catch (err) {
-    console.error("CRITICAL loginUser error:", err);
-    res.status(500).json({ 
-      message: "Server error during login",
-      error: err.message 
-    });
+    console.error("Verify OTP error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -169,7 +242,7 @@ export const getProfile = async (req, res) => {
 // Update Profile
 export const updateProfile = async (req, res) => {
   try {
-    const { firstName, lastName, phone, dateOfBirth, gender, preferences, profilePicture } = req.body;
+    const { firstName, lastName, phone, gender, address, city, state, pincode, preferences, profilePicture } = req.body;
     const user = await User.findById(req.user.sub);
     
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -184,8 +257,11 @@ export const updateProfile = async (req, res) => {
       }
       user.phone = phone;
     }
-    if (dateOfBirth) user.dateOfBirth = new Date(dateOfBirth);
     if (gender) user.gender = gender;
+    if (address) user.address = address;
+    if (city) user.city = city;
+    if (state) user.state = state;
+    if (pincode) user.pincode = pincode;
     if (profilePicture) user.profilePicture = profilePicture;
     if (preferences) user.preferences = { ...user.preferences, ...preferences };
 
@@ -197,34 +273,7 @@ export const updateProfile = async (req, res) => {
   }
 };
 
-// Change Password
-export const changePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user.sub).select("+password");
-    
-    if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Verify current password
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Incorrect current password" });
-    }
-
-    // Hash new password
-    const salt = await bcrypt.genSalt(SALT_ROUNDS);
-    user.password = await bcrypt.hash(newPassword, salt);
-    
-    // Invalidate old tokens by incrementing version
-    user.tokenVersion = (user.tokenVersion || 0) + 1;
-
-    await user.save();
-    res.json({ message: "Password updated successfully" });
-  } catch (err) {
-    console.error("changePassword error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
 
 // Get All Addresses
 export const getAddresses = async (req, res) => {
@@ -316,5 +365,41 @@ export const deleteAddress = async (req, res) => {
   } catch (err) {
     console.error("deleteAddress error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Upload Profile Picture
+export const uploadUserProfilePicture = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const user = await User.findById(req.user.sub);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Update user with new profile picture URL
+    user.profilePicture = req.file.path;
+    await user.save();
+
+    res.json({
+      message: "Profile picture updated successfully",
+      profilePicture: req.file.path
+    });
+  } catch (error) {
+    console.error("Profile picture upload error:", error);
+    res.status(500).json({ message: "Error uploading profile picture", error: error.message });
+  }
+};
+
+// Admin: Get all users
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({}).sort({ createdAt: -1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };

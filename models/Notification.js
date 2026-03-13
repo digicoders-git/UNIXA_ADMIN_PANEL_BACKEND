@@ -6,7 +6,7 @@ const notificationSchema = new mongoose.Schema(
     message: { type: String, required: true },
     audience: { 
         type: String, 
-        enum: ["All", "Customers", "Employees"], 
+        enum: ["All", "Customers", "Employees", "Specific"], 
         default: "All" 
     },
     type: { 

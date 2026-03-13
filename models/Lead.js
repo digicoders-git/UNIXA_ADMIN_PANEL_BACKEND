@@ -11,9 +11,15 @@ const leadSchema = new mongoose.Schema(
     notes: { type: String, default: "" },
     followUpDate: { type: Date },
     source: { type: String, default: "Field Visit" },
-    createdBy: { type: String, default: "" }
+    createdBy: { type: String, default: "" },
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "Employee", default: null },
+    status: { type: String, enum: ["Pending", "Completed"], default: "Pending" }
   },
   { timestamps: true }
 );
+
+leadSchema.methods.isAssigned = function() {
+  return this.assignedTo !== null && this.assignedTo !== undefined;
+};
 
 export default mongoose.model("Lead", leadSchema);

@@ -8,7 +8,7 @@ export const getAllServiceRequests = async (req, res) => {
     const requests = await ServiceRequest.find()
       .populate('userId', 'firstName lastName email phone addresses')
       .populate('amcId', 'amcPlanName productName')
-      .select('ticketId customerName customerPhone customerEmail type description priority status date assignedTechnician address userId amcId')
+      .select('ticketId customerName customerPhone customerEmail type description priority status date assignedTechnician address userId amcId completionPhotos completionRemark')
       .sort({ createdAt: -1 })
       .limit(500)
       .lean();
@@ -29,6 +29,8 @@ export const getAllServiceRequests = async (req, res) => {
       address: req.address,
       userId: req.userId,
       amcId: req.amcId,
+      completionPhotos: req.completionPhotos,
+      completionRemark: req.completionRemark,
       _id: req._id
     })));
   } catch (err) {
@@ -40,7 +42,7 @@ export const getAllServiceRequests = async (req, res) => {
 export const updateServiceRequest = async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const { status, resolutionNotes, assignedTechnician, priority, completionPhoto } = req.body;
+    const { status, resolutionNotes, assignedTechnician, priority, completionPhotos, completionRemark } = req.body;
 
     const request = await ServiceRequest.findOne({ ticketId })
       .populate('userId')
@@ -57,25 +59,32 @@ export const updateServiceRequest = async (req, res) => {
     if (assignedTechnician !== undefined) request.assignedTechnician = assignedTechnician;
     if (priority) request.priority = priority;
 
-    if (completionPhoto) {
-      try {
-        const uploadResult = await cloudinary.uploader.upload(completionPhoto, {
-          folder: 'service-completions',
-          resource_type: 'image'
-        });
-        request.completionPhoto = uploadResult.secure_url;
-      } catch (uploadErr) {
-        console.error('Photo upload failed:', uploadErr);
+    if (completionPhotos && Array.isArray(completionPhotos)) {
+      const uploadedUrls = [];
+      for (const photo of completionPhotos) {
+        if (photo.startsWith('http')) {
+          uploadedUrls.push(photo);
+        } else {
+          try {
+            const uploadResult = await cloudinary.uploader.upload(photo, {
+              folder: 'service-completions',
+              resource_type: 'image'
+            });
+            uploadedUrls.push(uploadResult.secure_url);
+          } catch (uploadErr) {
+            console.error('Photo upload failed:', uploadErr);
+          }
+        }
       }
+      request.completionPhotos = uploadedUrls;
     }
+    if (completionRemark !== undefined) request.completionRemark = completionRemark;
 
     // Update AMC when job is completed (only once)
     if (status === "Resolved" && oldStatus !== "Resolved" && request.amcId) {
       try {
-        console.log('Updating AMC:', request.amcId);
         const amc = await UserAmc.findById(request.amcId);
         if (amc) {
-          console.log('AMC found. Current servicesUsed:', amc.servicesUsed, 'Total:', amc.servicesTotal);
           if (amc.servicesUsed < amc.servicesTotal) {
             amc.servicesUsed += 1;
             amc.serviceHistory.push({
@@ -86,12 +95,7 @@ export const updateServiceRequest = async (req, res) => {
               complaintId: ticketId
             });
             await amc.save();
-            console.log('AMC updated successfully. New servicesUsed:', amc.servicesUsed);
-          } else {
-            console.log('All services already used');
           }
-        } else {
-          console.log('AMC not found');
         }
       } catch (amcErr) {
         console.error('AMC update failed:', amcErr);

@@ -4,6 +4,7 @@ import Enquiry from "../models/Enquiry.js";
 import Employee from "../models/Employee.js";
 import Lead from "../models/Lead.js";
 import UserAmc from "../models/UserAmc.js";
+import AssignedTicket from "../models/AssignedTicket.js";
 
 // @desc    Get Manager Dashboard Stats
 // @route   GET /api/manager-dashboard/stats
@@ -25,14 +26,14 @@ export const getManagerDashboardStats = async (req, res) => {
       topLeads,
       allAmcsForStatsRaw
     ] = await Promise.all([
-      // Basic counts
-      ServiceRequest.countDocuments(),
-      ServiceRequest.countDocuments({ status: { $ne: "Resolved" } }),
+      // Basic counts - from AssignedTicket
+      AssignedTicket.countDocuments(),
+      AssignedTicket.countDocuments({ status: { $ne: "Completed" } }),
       Lead.countDocuments(),
       Employee.countDocuments({ role: { $ne: "Manager" } }),
 
       // Chart data - Tickets in last 7 days
-      ServiceRequest.aggregate([
+      AssignedTicket.aggregate([
         { $match: { createdAt: { $gte: last7Days } } },
         {
           $group: {
@@ -53,9 +54,9 @@ export const getManagerDashboardStats = async (req, res) => {
         }
       ]),
 
-      // Recent activity data
-      ServiceRequest.find().sort({ createdAt: -1 }).limit(3).select('customerName type createdAt'),
-      Lead.find().sort({ createdAt: -1 }).limit(3).select('name createdAt'),
+      // Recent activity data - from AssignedTicket with status
+      AssignedTicket.find().sort({ createdAt: -1 }).limit(3).select('title assignedTo createdAt status priority description'),
+      Lead.find().sort({ createdAt: -1 }).limit(3).select('name createdAt status source email'),
 
       // Fetch all AMCs for dynamic calculation
       UserAmc.find().select('status startDate endDate servicesUsed servicesTotal')
@@ -112,11 +113,12 @@ export const getManagerDashboardStats = async (req, res) => {
     const recentActivity = [
       ...topTickets.map(t => ({
         type: 'Ticket',
-        name: t.customerName,
-        action: `raised a ${t.type || 'service request'}`,
+        name: t.title,
+        action: `assigned to ${t.assignedTo}`,
         time: moment(t.createdAt).fromNow(),
         color: 'red',
-        date: new Date(t.createdAt)
+        date: new Date(t.createdAt),
+        status: t.status
       })),
       ...topLeads.map(l => ({
         type: 'Lead',
@@ -124,7 +126,8 @@ export const getManagerDashboardStats = async (req, res) => {
         action: `submitted a lead`,
         time: moment(l.createdAt).fromNow(),
         color: 'blue',
-        date: new Date(l.createdAt)
+        date: new Date(l.createdAt),
+        status: l.status
       }))
     ].sort((a, b) => b.date - a.date).slice(0, 5);
 

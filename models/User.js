@@ -5,11 +5,14 @@ const userSchema = new mongoose.Schema(
   {
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true },
+    email: { type: String, required: false, unique: true, sparse: true, lowercase: true },
     phone: { type: String, required: true, unique: true },
-    password: { type: String, required: true, select: false },
     dateOfBirth: { type: Date },
     gender: { type: String, enum: ["male", "female", "other"] },
+    address: { type: String },
+    city: { type: String },
+    state: { type: String },
+    pincode: { type: String },
     
     // Profile completion
     profilePicture: { type: String },
@@ -40,7 +43,11 @@ const userSchema = new mongoose.Schema(
     // Account status
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
-    tokenVersion: { type: Number, default: 0, select: false }
+    tokenVersion: { type: Number, default: 0, select: false },
+    
+    // OTP for authentication
+    otp: { type: String, select: false },
+    otpExpiry: { type: Date, select: false }
   },
   { timestamps: true }
 );

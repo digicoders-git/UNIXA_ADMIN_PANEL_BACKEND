@@ -200,12 +200,15 @@ export const placeOrder = async (req, res) => {
   }
 };
 
-// Get User Orders
+// Get User Orders - EXCLUDE OFFLINE ORDERS
 export const getUserOrders = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
     
-    const filter = { userId: req.user.sub };
+    const filter = { 
+      userId: req.user.sub,
+      source: { $ne: 'offline' }  // Exclude offline orders from user panel
+    };
     if (status) filter.status = status;
 
     const orders = await Order.find(filter)
@@ -241,7 +244,8 @@ export const getOrder = async (req, res) => {
 
     const order = await Order.findOne({ 
       _id: orderId, 
-      userId: req.user.sub 
+      userId: req.user.sub,
+      source: { $ne: 'offline' }  // Prevent access to offline orders
     }).populate({
       path: "items.product",
       select: "name slug mainImage p_id" 
@@ -263,7 +267,8 @@ export const cancelOrder = async (req, res) => {
 
     const order = await Order.findOne({ 
       _id: orderId, 
-      userId: req.user.sub 
+      userId: req.user.sub,
+      source: { $ne: 'offline' }  // Prevent cancelling offline orders
     });
 
     if (!order) return res.status(404).json({ message: "Order not found" });
@@ -297,7 +302,8 @@ export const returnOrder = async (req, res) => {
 
     const order = await Order.findOne({ 
       _id: orderId, 
-      userId: req.user.sub 
+      userId: req.user.sub,
+      source: { $ne: 'offline' }  // Prevent returning offline orders
     });
 
     if (!order) return res.status(404).json({ message: "Order not found" });
@@ -330,7 +336,8 @@ export const trackOrder = async (req, res) => {
 
     const order = await Order.findOne({ 
       _id: orderId, 
-      userId: req.user.sub 
+      userId: req.user.sub,
+      source: { $ne: 'offline' }  // Prevent tracking offline orders
     }, "status paymentStatus createdAt updatedAt");
 
     if (!order) return res.status(404).json({ message: "Order not found" });

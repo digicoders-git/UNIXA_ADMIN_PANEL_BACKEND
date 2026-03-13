@@ -53,10 +53,24 @@ const userAmcSchema = new mongoose.Schema(
     servicesUsed: { type: Number, default: 0 },
     partsIncluded: { type: Boolean, default: false },
     
+    // Service schedule
+    serviceSchedule: {
+      intervalMonths: { type: Number, default: 4 },
+      serviceType: { 
+        type: String, 
+        enum: ["Installation", "Regular Service", "Repair", "Filter Change", "Other"],
+        default: "Regular Service"
+      },
+      description: { type: String, default: "Scheduled maintenance service" }
+    },
+    
+    // Next service due date
+    nextServiceDueDate: { type: Date },
+    
     // Status
     status: { 
       type: String, 
-      enum: ["Active", "Expired", "Cancelled", "On Hold"], 
+      enum: ["Active", "Expired", "Cancelled", "On Hold", "Renewed"], 
       default: "Active",
       index: true
     },
@@ -85,6 +99,23 @@ const userAmcSchema = new mongoose.Schema(
       notes: { type: String },
       complaintId: { type: String }, // Linked to Customer.complaints
       nextDueDate: { type: Date }
+    }],
+    
+    // 4-month reminder tracking
+    reminderSent: { type: Boolean, default: false, index: true },
+    
+    // Reminder history
+    reminderHistory: [{
+      reminderNumber: { type: Number },
+      reminderDate: { type: Date, default: Date.now },
+      ticketId: { type: mongoose.Schema.Types.ObjectId, ref: 'AssignedTicket' },
+      assignedTo: { type: String },
+      assignedByRole: { type: String, enum: ['Admin', 'Manager'] },
+      employeeFeedback: { type: String },
+      visitPhotos: [{ type: String }],
+      customerFeedback: { type: String },
+      completedAt: { type: Date },
+      status: { type: String, enum: ['Pending', 'Completed'], default: 'Pending' }
     }]
   },
   { timestamps: true }
@@ -93,6 +124,7 @@ const userAmcSchema = new mongoose.Schema(
 // Index for efficient queries
 userAmcSchema.index({ userId: 1, status: 1 });
 userAmcSchema.index({ endDate: 1 });
+userAmcSchema.index({ nextServiceDueDate: 1 });
 
 // Virtual for days remaining
 userAmcSchema.virtual('daysRemaining').get(function() {
@@ -101,6 +133,15 @@ userAmcSchema.virtual('daysRemaining').get(function() {
   const end = new Date(this.endDate);
   const diff = end - now;
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+});
+
+// Virtual for days until next service
+userAmcSchema.virtual('daysUntilNextService').get(function() {
+  if (!this.nextServiceDueDate) return null;
+  const now = new Date();
+  const dueDate = new Date(this.nextServiceDueDate);
+  const diff = dueDate - now;
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
 });
 
 // Virtual for isExpired
@@ -123,6 +164,14 @@ userAmcSchema.pre('save', function(next) {
 userAmcSchema.methods.addServiceVisit = function(serviceData) {
   this.serviceHistory.push(serviceData);
   this.servicesUsed += 1;
+  
+  // Calculate next service due date
+  if (this.serviceSchedule && this.serviceSchedule.intervalMonths) {
+    const nextDue = new Date(serviceData.date);
+    nextDue.setMonth(nextDue.getMonth() + this.serviceSchedule.intervalMonths);
+    this.nextServiceDueDate = nextDue;
+  }
+  
   return this.save();
 };
 
@@ -132,6 +181,21 @@ userAmcSchema.statics.getActiveAmcs = function(userId) {
     .populate('amcPlanId')
     .populate('productId')
     .sort({ endDate: 1 });
+};
+
+// Static method to get upcoming service jobs (due within 7 days)
+userAmcSchema.statics.getUpcomingServiceJobs = function() {
+  const now = new Date();
+  const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  
+  return this.find({
+    status: 'Active',
+    nextServiceDueDate: { $lte: sevenDaysLater, $gte: now }
+  })
+    .populate('userId', 'firstName lastName email phone addresses city state')
+    .populate('amcPlanId')
+    .populate('productId')
+    .sort({ nextServiceDueDate: 1 });
 };
 
 // Static method to check and update expired AMCs

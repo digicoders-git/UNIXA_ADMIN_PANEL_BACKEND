@@ -8,7 +8,10 @@ import {
   cancelAmc,
   getAllUserAmcs,
   getDueAmcs,
-  renewAmc
+  renewAmc,
+  createManualAmc,
+  getUserAmcHistoryByPhone,
+  getEligibleProducts
 } from "../controllers/userAmcController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { authenticateAdmin } from "../middleware/adminAuth.js";
@@ -18,14 +21,19 @@ const router = express.Router();
 // Admin routes
 router.get("/admin/all", authenticateAdmin, getAllUserAmcs);
 router.get("/admin/due", authenticateAdmin, getDueAmcs);
+router.get("/admin/user/:phone", authenticateAdmin, getUserAmcHistoryByPhone);
 router.get("/all", authenticateAdmin, getAllUserAmcs);
 router.post("/admin/renew/:amcId", authenticateAdmin, renewAmc);
+router.post("/admin/create-manual", authenticateAdmin, createManualAmc);
 
 // All routes require authentication
 router.use(requireAuth);
 
 // Get user's AMCs (with filters)
 router.get("/", getMyAmcs);
+
+// Get products eligible for AMC
+router.get("/eligible-products", getEligibleProducts);
 
 // Get AMC summary/statistics
 router.get("/summary", getAmcSummary);

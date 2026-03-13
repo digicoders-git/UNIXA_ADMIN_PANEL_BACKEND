@@ -7,7 +7,7 @@ import Product from "../models/Product.js";
 export const createEnquiry = async (req, res) => {
   try {
     const { name, email, phone, subject, message, status, address, productInterest, leadStatus, notes, followUpDate, source } = req.body;
-    if (!name ) {
+    if (!name) {
       return res.status(400).json({ message: "name required" });
     }
     const enquiry = await Enquiry.create({
@@ -39,50 +39,50 @@ export const createEnquiry = async (req, res) => {
 
     // Logic to show in User Panel: Create/Update Customer with Pending Rental
     if (subject && subject.includes("Booking:") && phone) {
-        try {
-            const { planId, amount } = req.body;
-            // Normalize for matching
-            const normalizedPhone = phone.replace(/\D/g, "").slice(-10);
-            let customer = await Customer.findOne({ mobile: new RegExp(normalizedPhone + "$") });
-            
-            // If planId is provided, get model name for a better display
-            let machineModel = "";
-            let machineImage = "";
-            if (planId) {
-                const plan = await RentalPlan.findById(planId).populate('productId');
-                if (plan) {
-                    machineModel = plan.productId?.name || plan.planName;
-                    machineImage = plan.image?.url || plan.productId?.mainImage?.url;
-                }
-            }
+      try {
+        const { planId, amount } = req.body;
+        // Normalize for matching
+        const normalizedPhone = phone.replace(/\D/g, "").slice(-10);
+        let customer = await Customer.findOne({ mobile: new RegExp(normalizedPhone + "$") });
 
-            const rentalData = {
-                planId: planId || null,
-                planName: subject.replace("Booking: ", ""),
-                amount: amount || 0,
-                status: "Pending",
-                machineModel: machineModel,
-                machineImage: machineImage,
-                startDate: new Date()
-            };
-
-            if (customer) {
-                // If they already have an active rental, don't overwrite? 
-                // Usually we can just update to Pending for a new request
-                customer.rentalDetails = rentalData;
-                await customer.save();
-            } else {
-                await Customer.create({
-                    name,
-                    mobile: phone,
-                    email: email || "",
-                    type: "New",
-                    rentalDetails: rentalData
-                });
-            }
-        } catch (custErr) {
-            console.error("Failed to link rental enquiry to customer:", custErr);
+        // If planId is provided, get model name for a better display
+        let machineModel = "";
+        let machineImage = "";
+        if (planId) {
+          const plan = await RentalPlan.findById(planId).populate('productId');
+          if (plan) {
+            machineModel = plan.productId?.name || plan.planName;
+            machineImage = plan.image?.url || plan.productId?.mainImage?.url;
+          }
         }
+
+        const rentalData = {
+          planId: planId || null,
+          planName: subject.replace("Booking: ", ""),
+          amount: amount || 0,
+          status: "Pending",
+          machineModel: machineModel,
+          machineImage: machineImage,
+          startDate: new Date()
+        };
+
+        if (customer) {
+          // If they already have an active rental, don't overwrite? 
+          // Usually we can just update to Pending for a new request
+          customer.rentalDetails = rentalData;
+          await customer.save();
+        } else {
+          await Customer.create({
+            name,
+            mobile: phone,
+            email: email || "",
+            type: "New",
+            rentalDetails: rentalData
+          });
+        }
+      } catch (custErr) {
+        console.error("Failed to link rental enquiry to customer:", custErr);
+      }
     }
 
     res.status(201).json({ message: "Enquiry submitted", enquiry });

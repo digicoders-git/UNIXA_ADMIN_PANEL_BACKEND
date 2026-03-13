@@ -14,6 +14,8 @@ const employeeSchema = new mongoose.Schema(
     location: { type: String },
     workingArea: { type: String },
     employeeId: { type: String },
+    profilePicture: { type: String },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee", default: null },
   },
   { timestamps: true }
 );

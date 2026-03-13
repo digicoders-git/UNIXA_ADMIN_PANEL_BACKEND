@@ -9,6 +9,8 @@ import connectDB from "./config/db.js";
 import moment from "moment-timezone";
 import cron from "node-cron";
 import UserAmc from "./models/UserAmc.js";
+import AssignedTicket from "./models/AssignedTicket.js";
+import Employee from "./models/Employee.js";
 
 import adminRoutes from "./routes/adminRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
@@ -48,6 +50,7 @@ import employeeDashboardRoutes from "./routes/employeeDashboardRoutes.js";
 import managerDashboardRoutes from "./routes/managerDashboardRoutes.js";
 import assignedTicketRoutes from "./routes/assignedTicketRoutes.js";
 import leadRoutes from "./routes/leadRoutes.js";
+import amcJobsRoutes from "./routes/amcJobsRoutes.js";
 
 const app = express();
 
@@ -168,6 +171,7 @@ app.use("/api/employee-dashboard", employeeDashboardRoutes);
 app.use("/api/manager-dashboard", managerDashboardRoutes);
 app.use("/api/assigned-tickets", assignedTicketRoutes);
 app.use("/api/leads", leadRoutes);
+app.use("/api/amc-jobs", amcJobsRoutes);
 
 
 
@@ -210,7 +214,7 @@ app.listen(PORT, '0.0.0.0', async () => {
   try {
     await connectDB();
     console.log("⏳ Timezone:", moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A"));
-    
+
     // 🔄 Schedule AMC status update job - runs every hour
     cron.schedule('0 * * * *', async () => {
       try {
@@ -222,8 +226,85 @@ app.listen(PORT, '0.0.0.0', async () => {
         console.error('❌ AMC status update job failed:', error);
       }
     });
-    
+
+    // 🔄 Schedule 4-month AMC reminder job - runs every day at midnight
+    cron.schedule('0 0 * * *', async () => {
+      try {
+        const today = new Date();
+        const fourMonthsLater = new Date();
+        fourMonthsLater.setMonth(fourMonthsLater.getMonth() + 4);
+
+        // Find AMCs that need reminder (4 months away from expiry, not yet reminded)
+        const amcsToRemind = await UserAmc.find({
+          status: 'Active',
+          reminderSent: false,
+          endDate: {
+            $gte: today,
+            $lte: fourMonthsLater
+          }
+        }).populate('userId', 'firstName lastName email phone');
+
+        if (amcsToRemind.length > 0) {
+          // Get active employees
+          const employees = await Employee.find({ status: true }).select('name email');
+
+          if (employees.length === 0) {
+            console.warn('⚠️ No active employees found for AMC reminder assignment');
+            return;
+          }
+
+          for (const amc of amcsToRemind) {
+            // Assign to random employee
+            const randomEmployee = employees[Math.floor(Math.random() * employees.length)];
+
+            // Calculate reminder number
+            const reminderNumber = amc.reminderHistory ? amc.reminderHistory.length + 1 : 1;
+
+            // Create ticket
+            const ticket = await AssignedTicket.create({
+              ticketType: 'service_request',
+              title: `AMC Renewal - ${amc.productName} (${amc.amcPlanName})`,
+              description: `Field visit required for AMC renewal. AMC expires on ${moment(amc.endDate).tz("Asia/Kolkata").format("DD-MM-YYYY")}`,
+              assignedBy: 'System',
+              assignedTo: randomEmployee.name,
+              priority: 'High',
+              status: 'Pending',
+              userId: amc.userId._id,
+              amcId: amc._id,
+              customerName: amc.userId.firstName + ' ' + amc.userId.lastName,
+              customerPhone: amc.userId.phone,
+              customerEmail: amc.userId.email,
+              dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+              visitType: 'AMC_REMINDER',
+              assignedByRole: 'Admin'
+            });
+
+            // Add to reminder history
+            amc.reminderHistory.push({
+              reminderNumber,
+              reminderDate: new Date(),
+              ticketId: ticket._id,
+              assignedTo: randomEmployee.name,
+              assignedByRole: 'Admin',
+              status: 'Pending'
+            });
+
+            // Mark reminder as sent
+            amc.reminderSent = true;
+            await amc.save();
+
+            console.log(`✅ AMC reminder #${reminderNumber} ticket created for ${amc.productName}, assigned to ${randomEmployee.name}`);
+          }
+
+          console.log(`✅ Created ${amcsToRemind.length} AMC reminder tickets at ${moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A")}`);
+        }
+      } catch (error) {
+        console.error('❌ AMC reminder job failed:', error);
+      }
+    });
+
     console.log('🕐 AMC status update job scheduled (runs every hour)');
+    console.log('🕐 AMC 4-month reminder job scheduled (runs daily at midnight)');
   } catch (error) {
     console.error("Startup Database Connection Failed:", error);
   }

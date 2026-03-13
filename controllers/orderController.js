@@ -8,6 +8,7 @@ import User from "../models/User.js";
 import UserAmc from "../models/UserAmc.js";
 import AmcPlan from "../models/AmcPlan.js";
 import Transaction from "../models/Transaction.js";
+import Lead from "../models/Lead.js";
 import mongoose from "mongoose";
 
 const applyOffer = (offer, subtotal) => {
@@ -46,17 +47,21 @@ export const placeOrder = async (req, res) => {
       status // for manual offline
     } = req.body;
 
-    console.log("Place Order Attempt:", { source });
+    console.log("Place Order Attempt:", { source, userId, itemsCount: items?.length });
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
 
     // Validation: userId NOT mandatory for offline
     if (source !== "offline" && !userId) {
+      console.log("❌ Validation failed: userId required for online orders");
       return res.status(400).json({ message: "userId is required for online orders" });
     }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
+      console.log("❌ Validation failed: items invalid", { items });
       return res.status(400).json({ message: "items are required" });
     }
     if (!shippingAddress || !shippingAddress.name || !shippingAddress.phone) {
+      console.log("❌ Validation failed: shippingAddress invalid", { shippingAddress });
       return res.status(400).json({ message: "shippingAddress is invalid" });
     }
 
@@ -120,6 +125,7 @@ export const placeOrder = async (req, res) => {
         warrantyExpiry: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
         amcId: item.amcId || (item.amcPlan ? `AMC${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}` : undefined),
         amcPlan: item.amcPlan,
+        amcPlanName: item.amcPlanName,
         amcPrice: amcPrice // Store amc price per unit if needed
       });
     }
@@ -228,10 +234,24 @@ export const placeOrder = async (req, res) => {
 export const listOrders = async (_req, res) => {
   try {
     const orders = await Order.find()
-      .select('_id status paymentStatus paymentMethod total shippingAddress createdAt items')
+      .select('_id status paymentStatus paymentMethod total shippingAddress createdAt items source')
       .sort({ createdAt: -1 })
       .limit(200)
       .lean();
+
+    console.log('listOrders - Total orders found:', orders.length);
+    const offlineOrders = orders.filter(o => o.source === 'offline');
+    console.log('listOrders - Offline orders found:', offlineOrders.length);
+
+    if (offlineOrders.length > 0) {
+      console.log('listOrders - Sample offline order:', {
+        id: offlineOrders[0]._id,
+        source: offlineOrders[0].source,
+        customerName: offlineOrders[0].shippingAddress?.name,
+        total: offlineOrders[0].total
+      });
+    }
+
     res.json({ orders });
   } catch (err) {
     console.error("listOrders error:", err);
@@ -286,7 +306,7 @@ export const updateOrderStatus = async (req, res) => {
 
         for (const item of order.items) {
           console.log(`\nProcessing item: ${item.productName}`);
-          
+
           // Check if customer selected specific AMC
           if (item.amcPlan && item.amcId) {
             console.log('  ✅ Customer selected AMC, using that...');
@@ -326,7 +346,7 @@ export const updateOrderStatus = async (req, res) => {
           } else {
             // No AMC selected by customer, check if product has AMC plans
             console.log('  ℹ️  No AMC selected, checking product AMC plans...');
-            
+
             let productData = null;
             if (item.productType === 'RoPart') {
               productData = await RoPart.findById(item.product).populate('amcPlans');
@@ -377,7 +397,7 @@ export const updateOrderStatus = async (req, res) => {
             console.log(`  ✅ AMC auto-activated! UserAmc ID: ${userAmc._id}`);
           }
         }
-        
+
         console.log('🎉 AMC activation completed!');
       } catch (amcErr) {
         console.error('❌ Error activating AMC:', amcErr);
@@ -457,18 +477,23 @@ export const getCustomersFromOrders = async (req, res) => {
   try {
     const { search } = req.query;
 
-    const orders = await Order.find().sort({ createdAt: -1 });
+    const [orders, leads] = await Promise.all([
+      Order.find().sort({ createdAt: -1 }),
+      Lead.find().sort({ createdAt: -1 })
+    ]);
 
     // Extract unique customers based on phone number
     const customerMap = new Map();
 
+    // Process Orders
     orders.forEach(order => {
       const phone = order.shippingAddress?.phone;
       if (!phone) return;
 
       if (!customerMap.has(phone)) {
         customerMap.set(phone, {
-          _id: order._id,
+          _id: phone,
+          phone: phone,
           name: order.shippingAddress.name,
           mobile: phone,
           email: order.shippingAddress.email || '',
@@ -479,19 +504,94 @@ export const getCustomersFromOrders = async (req, res) => {
             pincode: order.shippingAddress.pincode || '',
           },
           type: 'Order Customer',
+          source: order.source || 'Online',
           status: 'Active',
-          purifiers: order.items.map(item => ({
-            brand: item.productName.split(' ')[0] || 'Unknown',
-            model: item.productName,
-            type: 'RO',
-          })),
+          orderItems: [],
+          orderCount: 0,
           serviceHistory: [],
           createdAt: order.createdAt
         });
       }
+
+      const customer = customerMap.get(phone);
+      customer.orderCount += 1;
+      order.items.forEach(item => {
+        customer.orderItems.push({
+          productName: item.productName,
+          orderId: order._id,
+          date: order.createdAt
+        });
+      });
+    });
+
+    // Process Leads as Customers
+    leads.forEach(lead => {
+      const phone = lead.phone;
+      if (!phone) return;
+
+      if (!customerMap.has(phone)) {
+        customerMap.set(phone, {
+          _id: lead._id, // Keep the lead ID if it's new
+          phone: phone,
+          name: lead.name,
+          mobile: phone,
+          email: lead.email || '',
+          address: {
+            house: '',
+            area: lead.address || '',
+            city: '',
+            pincode: '',
+          },
+          type: 'Lead',
+          source: lead.source || 'Lead',
+          status: lead.status === 'Completed' ? 'Active' : 'Pending',
+          orderItems: [],
+          orderCount: 0,
+          serviceHistory: [],
+          createdAt: lead.createdAt
+        });
+      } else {
+        // If already exists as an order customer, maybe update the type if it's a lead?
+        // Actually, usually an order customer is higher priority.
+        // But we can mark that they were also a lead.
+        const customer = customerMap.get(phone);
+        if (customer.type === 'Order Customer') {
+          customer.isAlsoLead = true;
+          customer.leadId = lead._id;
+          if (!customer.source) customer.source = lead.source;
+        }
+      }
+    });
+
+
+    // Fetch all User AMCs to count them
+    const allUserAmcs = await UserAmc.find().lean();
+    const allUsers = await User.find().select('phone _id').lean();
+    const phoneToUserId = new Map();
+    allUsers.forEach(u => {
+      if (u.phone) {
+        // Normalize phone to last 10 digits for matching
+        const suffix = u.phone.slice(-10);
+        phoneToUserId.set(suffix, u._id.toString());
+      }
     });
 
     let customers = Array.from(customerMap.values());
+
+    // Map counts to customers
+    customers.forEach(customer => {
+      const phoneSuffix = customer.mobile.slice(-10);
+      const userId = phoneToUserId.get(phoneSuffix);
+
+      // Count AMCs for this customer by phone suffix OR userId
+      const customerAmcs = allUserAmcs.filter(amc => {
+        const amcPhone = amc.shippingAddress?.phone || "";
+        const amcPhoneSuffix = amcPhone.slice(-10);
+        return amcPhoneSuffix === phoneSuffix || (userId && amc.userId?.toString() === userId);
+      });
+
+      customer.amcCount = customerAmcs.length;
+    });
 
     // Apply search filter
     if (search) {

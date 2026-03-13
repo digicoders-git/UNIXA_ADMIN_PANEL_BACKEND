@@ -2,32 +2,41 @@
 import express from "express";
 import {
   registerUser,
-  loginUser,
+  sendLoginOTP,
+  verifyOTPAndLogin,
   getProfile,
   updateProfile,
   getAddresses,
   addAddress,
   updateAddress,
   deleteAddress,
-  changePassword
+  uploadUserProfilePicture,
+  getAllUsers
 } from "../controllers/userController.js";
 import { authenticateUser } from "../middleware/userAuth.js";
+import { uploadProfilePicture } from "../config/cloudinary.js";
 
 const router = express.Router();
 
 // Public routes
 router.post("/register", registerUser);
-router.post("/login", loginUser);
+
+// Auth routes - these will be accessible as /api/users/auth/send-otp
+router.post("/auth/send-otp", sendLoginOTP);
+router.post("/auth/verify-otp", verifyOTPAndLogin);
 
 // Protected routes
 router.get("/profile", authenticateUser, getProfile);
 router.put("/profile", authenticateUser, updateProfile);
-router.put("/change-password", authenticateUser, changePassword);
+router.put("/:id/profile-picture", authenticateUser, uploadProfilePicture, uploadUserProfilePicture);
 
 // Address management
 router.get("/addresses", authenticateUser, getAddresses);
 router.post("/addresses", authenticateUser, addAddress);
 router.put("/addresses/:addressId", authenticateUser, updateAddress);
 router.delete("/addresses/:addressId", authenticateUser, deleteAddress);
+
+// Admin routes
+router.get("/", getAllUsers);
 
 export default router;

@@ -12,6 +12,17 @@ const amcPlanSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   partsIncluded: { type: Boolean, default: false },
   productIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
+  
+  // Mandatory service schedule
+  serviceSchedule: {
+    intervalMonths: { type: Number, default: 4 }, // Service every 4 months
+    serviceType: { 
+      type: String, 
+      enum: ["Installation", "Regular Service", "Repair", "Filter Change", "Other"],
+      default: "Regular Service"
+    },
+    description: { type: String, default: "Scheduled maintenance service" }
+  }
 }, { timestamps: true });
 
 export default mongoose.model("AmcPlan", amcPlanSchema);

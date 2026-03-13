@@ -51,7 +51,8 @@ export const loginEmployee = async (req, res) => {
         workingArea: employee.workingArea,
         employeeId: employee.employeeId,
         address: employee.address,
-        joiningDate: employee.joiningDate
+        joiningDate: employee.joiningDate,
+        profilePicture: employee.profilePicture
       }
     });
 
@@ -64,8 +65,15 @@ export const loginEmployee = async (req, res) => {
 // Get all employees
 export const getEmployees = async (req, res) => {
   try {
-    const employees = await Employee.find()
+    let query = {};
+    
+    if (req.user && req.user.role === 'Manager') {
+      query = { createdBy: req.user.id };
+    }
+    
+    const employees = await Employee.find(query)
       .select('name email phone role designation status employeeId joiningDate createdAt')
+      .populate('createdBy', 'name email')
       .sort({ createdAt: -1 })
       .lean();
     res.json(employees);
@@ -98,6 +106,7 @@ export const createEmployee = async (req, res) => {
       location,
       workingArea,
       employeeId,
+      createdBy: req.user && req.user.id ? req.user.id : null,
     });
 
     await newEmployee.save();
@@ -194,5 +203,33 @@ export const getEmployeeStats = async (req, res) => {
   } catch (error) {
     console.error("Error fetching employee stats:", error);
     res.status(500).json({ message: "Error fetching stats" });
+  }
+};
+
+// Upload Profile Picture
+export const uploadEmployeeProfilePicture = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const employee = await Employee.findById(id);
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    // Update employee with new profile picture URL
+    employee.profilePicture = req.file.path;
+    await employee.save();
+
+    res.json({
+      message: "Profile picture updated successfully",
+      profilePicture: req.file.path
+    });
+  } catch (error) {
+    console.error("Profile picture upload error:", error);
+    res.status(500).json({ message: "Error uploading profile picture", error: error.message });
   }
 };
