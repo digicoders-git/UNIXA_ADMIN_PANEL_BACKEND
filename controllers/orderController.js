@@ -531,7 +531,7 @@ export const getCustomersFromOrders = async (req, res) => {
 
       if (!customerMap.has(phone)) {
         customerMap.set(phone, {
-          _id: lead._id, // Keep the lead ID if it's new
+          _id: phone, // Use phone as _id for consistent lookup in complete-history
           phone: phone,
           name: lead.name,
           mobile: phone,

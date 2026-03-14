@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import UserNotification from "../models/UserNotification.js";
 import Transaction from "../models/Transaction.js";
 import Order from "../models/Order.js";
+import Lead from "../models/Lead.js";
 
 // Get Complete Customer History (Orders + AMCs)
 export const getCustomerCompleteHistory = async (req, res) => {
@@ -11,45 +12,71 @@ export const getCustomerCompleteHistory = async (req, res) => {
     const { id } = req.params;
     console.log("getCustomerCompleteHistory called with id:", id);
 
-    // Try to find customer by phone number (since we're passing phone as _id)
     let customer = null;
+    const mongoose = (await import("mongoose")).default;
 
-    // First try to find by phone
-    customer = await Customer.findOne({ mobile: id });
-
-    // If not found in Customer collection, search in orders by phone
-    if (!customer) {
-      console.log("Customer not found in Customer collection, searching in orders...");
-      const order = await Order.findOne({ "shippingAddress.phone": id });
-      if (!order) {
-        console.log("No orders found for phone:", id);
-        return res.status(404).json({ message: "Customer not found" });
-      }
-      // Create a temporary customer object from order data
-      customer = {
-        _id: id,
-        name: order.shippingAddress.name,
-        mobile: id,
-        email: order.shippingAddress.email || "",
-        address: {
-          house: order.shippingAddress.addressLine1 || "",
-          area: order.shippingAddress.addressLine2 || "",
-          city: order.shippingAddress.city || "",
-          pincode: order.shippingAddress.pincode || ""
-        }
-      };
+    // Try different ways to find customer
+    // 1. Try by ObjectId in Customer collection
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      customer = await Customer.findById(id);
     }
 
-    // Get all orders for this customer (by phone number)
+    // 2. Try by phone number in Customer collection
+    if (!customer) {
+      customer = await Customer.findOne({ mobile: id });
+    }
+
+    // 3. Try Lead by ObjectId or phone
+    if (!customer) {
+      const lead = await Lead.findOne(
+        mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { phone: id }
+      );
+      if (lead) {
+        customer = {
+          _id: lead.phone, // use phone as stable ID for order lookup
+          name: lead.name,
+          mobile: lead.phone,
+          email: lead.email || "",
+          address: { house: "", area: lead.address || "", city: "", pincode: "" }
+        };
+      }
+    }
+
+    // 4. Try orders by phone
+    if (!customer) {
+      const order = await Order.findOne({ "shippingAddress.phone": id });
+      if (order) {
+        customer = {
+          _id: id,
+          name: order.shippingAddress.name,
+          mobile: id,
+          email: order.shippingAddress.email || "",
+          address: {
+            house: order.shippingAddress.addressLine1 || "",
+            area: order.shippingAddress.addressLine2 || "",
+            city: order.shippingAddress.city || "",
+            pincode: order.shippingAddress.pincode || ""
+          }
+        };
+      }
+    }
+
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    // Get all orders for this customer (by phone number or customerId)
     const orders = await Order.find({
-      "shippingAddress.phone": id
+      $or: [
+        { "shippingAddress.phone": customer.mobile || id },
+        { customerId: customer._id || id }
+      ]
     }).sort({ createdAt: -1 }).lean();
 
     console.log("Found orders:", orders.length);
 
     // Get all AMCs for this customer
     let allAmcs = [];
-    const mongoose = (await import("mongoose")).default;
 
     // 1. Find User by phone to get potential userId
     const user = await User.findOne({ phone: customer.mobile || id });
@@ -68,24 +95,26 @@ export const getCustomerCompleteHistory = async (req, res) => {
       ]
     }).populate('amcPlanId').sort({ createdAt: -1 }).lean();
 
-    // 3. Include AMCs from Customer model (Manual entries)
+    // 3. Include AMCs from Customer model (Manual entries) - ONLY if actually taken
     // Convert Mongoose document to plain object if needed
     const customerObj = typeof customer.toObject === 'function' ? customer.toObject() : customer;
 
-    if (customerObj.amcDetails && customerObj.amcDetails.planName) {
+    if (customerObj.amcDetails && customerObj.amcDetails.planName && customerObj.amcDetails.status !== 'Not Taken') {
       allAmcs.push({
         ...customerObj.amcDetails,
         source: "Manual"
       });
     }
 
-    // Include archived AMC history from Customer model
+    // Include archived AMC history from Customer model - ONLY actual taken AMCs
     if (customerObj.amcHistory && Array.isArray(customerObj.amcHistory)) {
       customerObj.amcHistory.forEach(h => {
-        allAmcs.push({
-          ...h,
-          source: "Manual History"
-        });
+        if (h.planName && h.status !== 'Not Taken') {
+          allAmcs.push({
+            ...h,
+            source: "Manual History"
+          });
+        }
       });
     }
 
@@ -113,27 +142,34 @@ export const getCustomerCompleteHistory = async (req, res) => {
       items: order.items
     }));
 
-    // Format consolidated AMCs data
-    const formattedAmcs = allAmcs.map(amc => ({
-      _id: amc._id || amc.amcId,
-      productName: amc.productName || amc.planName, // Adjust based on source
-      amcPlanName: amc.amcPlanName || amc.planName,
-      status: amc.status,
-      paymentStatus: amc.paymentStatus,
-      startDate: amc.startDate,
-      endDate: amc.endDate,
-      amcPlanPrice: amc.amcPlanPrice || amc.amount,
-      servicesTotal: amc.servicesTotal,
-      servicesUsed: amc.servicesUsed,
-      serviceHistory: amc.serviceHistory || [],
-      createdAt: amc.createdAt,
-      source: amc.source
-    }));
+    // Format consolidated AMCs data - ONLY include AMCs that were actually purchased/taken
+    const formattedAmcs = allAmcs
+      .filter(amc => {
+        const hasValidPlan = amc.amcPlanName || amc.planName;
+        const hasValidStatus = amc.status && amc.status !== 'Not Taken';
+        const hasValidDates = amc.startDate && amc.endDate;
+        return hasValidPlan && hasValidStatus && hasValidDates;
+      })
+      .map(amc => ({
+        _id: amc._id || amc.amcId,
+        productName: amc.productName || amc.planName,
+        amcPlanName: amc.amcPlanName || amc.planName,
+        status: amc.status,
+        paymentStatus: amc.paymentStatus,
+        startDate: amc.startDate,
+        endDate: amc.endDate,
+        amcPlanPrice: amc.amcPlanPrice || amc.amount,
+        servicesTotal: amc.servicesTotal,
+        servicesUsed: amc.servicesUsed,
+        serviceHistory: amc.serviceHistory || [],
+        createdAt: amc.createdAt,
+        source: amc.source
+      }));
 
     res.json({
       customer: {
         _id: customer._id,
-        userId: user?._id || customer.userId, // Include User ID if found
+        userId: user?._id || customer.userId,
         name: customer.name,
         mobile: customer.mobile,
         email: customer.email || "N/A",

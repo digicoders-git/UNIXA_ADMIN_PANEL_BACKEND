@@ -33,7 +33,7 @@ export const createTicket = async (req, res) => {
       });
       if (existingLeadTicket) {
 
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: 'This lead is already assigned to another employee',
           existingTicket: existingLeadTicket._id
         });
@@ -61,14 +61,14 @@ export const getAllTickets = async (req, res) => {
       .populate('serviceRequestId')
       .sort({ createdAt: -1 })
       .lean();
-    
 
-    
+
+
     const formattedTickets = tickets.map(ticket => ({
       ...ticket,
       leadId: ticket.leadId ? ticket.leadId.toString() : ticket.leadId
     }));
-    
+
     res.json(formattedTickets);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching tickets', error: error.message });
@@ -89,7 +89,7 @@ export const getTicketsByEmployee = async (req, res) => {
       .lean();
 
 
-    
+
     res.json(tickets);
   } catch (error) {
 
@@ -163,17 +163,20 @@ export const completeTicket = async (req, res) => {
               amcToUpdate.reminderHistory[reminderIndex].visitPhotos = completionPhotos;
               amcToUpdate.reminderHistory[reminderIndex].customerFeedback = customerFeedback;
             }
-            console.log(`[completeTicket] AMC reminder completed`);
+
+            amcToUpdate.servicesUsed += 1;
+            console.log(`[completeTicket] AMC reminder completed. AMC service updated. New used count: ${amcToUpdate.servicesUsed}`);
+
+            amcToUpdate.serviceHistory.push({
+              date: new Date(),
+              type: 'AMC Service',
+              technicianName: ticket.assignedTo,
+              notes: `Completed 4-month AMC Reminder: ${ticket.title}${ticket.notes ? ' - ' + ticket.notes : ''}`,
+              complaintId: ticket._id.toString()
+            });
           } else {
+            console.log(`[completeTicket] Regular/Customer service request completed, not deducting AMC quota.`);
             const isRegularService = ticket.description && ticket.description.startsWith('Regular');
-            
-            // Only increment AMC usage if it's an actual AMC service, not a regular standalone service
-            if (!isRegularService) {
-                amcToUpdate.servicesUsed += 1;
-                console.log(`[completeTicket] AMC service updated. New used count: ${amcToUpdate.servicesUsed}`);
-            } else {
-                console.log(`[completeTicket] Regular service completed, not deducting AMC quota.`);
-            }
 
             amcToUpdate.serviceHistory.push({
               date: new Date(),
@@ -192,7 +195,7 @@ export const completeTicket = async (req, res) => {
       }
 
       if (ticket.serviceRequestId) {
-        await ServiceRequest.findByIdAndUpdate(ticket.serviceRequestId, {
+        await ServiceRequest.findByIdAndUpdate(ticket.serviceRequestId._id || ticket.serviceRequestId, {
           status: 'Resolved',
           assignedTechnician: ticket.assignedTo,
           completionPhotos: completionPhotos,
@@ -201,7 +204,7 @@ export const completeTicket = async (req, res) => {
         console.log(`[completeTicket] ServiceRequest ${ticket.serviceRequestId._id || ticket.serviceRequestId} marked as Resolved`);
       }
     } else if (ticket.ticketType === 'order' && ticket.orderId) {
-      await Order.findByIdAndUpdate(ticket.orderId, {
+      await Order.findByIdAndUpdate(ticket.orderId._id || ticket.orderId, {
         status: 'installed',
         installedAt: new Date(),
         installedBy: ticket.assignedTo,
@@ -220,31 +223,31 @@ export const completeTicket = async (req, res) => {
 // Get available orders for assignment
 export const getAvailableOrders = async (req, res) => {
   try {
-    const assignedTickets = await AssignedTicket.find({ 
+    const assignedTickets = await AssignedTicket.find({
       orderId: { $exists: true, $ne: null },
       status: { $ne: 'Cancelled' }
     }).select('orderId').lean();
-    
+
     const assignedOrderIds = assignedTickets
       .map(ticket => ticket.orderId ? ticket.orderId.toString() : null)
       .filter(id => id !== null);
-    
+
     console.log('Assigned Order IDs (Active):', assignedOrderIds);
-    
+
     const allDeliveredOrders = await Order.find({
       status: 'delivered'
     })
-    .select('_id shippingAddress total createdAt status userId')
-    .sort({ createdAt: -1 })
-    .lean();
-    
-    const availableOrders = allDeliveredOrders.filter(order => 
+      .select('_id shippingAddress total createdAt status userId')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const availableOrders = allDeliveredOrders.filter(order =>
       !assignedOrderIds.includes(order._id.toString())
     );
-    
+
     console.log('Total Delivered Orders:', allDeliveredOrders.length);
     console.log('Available Orders Count:', availableOrders.length);
-    
+
     res.json(availableOrders);
   } catch (error) {
     console.error('Error in getAvailableOrders:', error);
@@ -255,24 +258,24 @@ export const getAvailableOrders = async (req, res) => {
 // Get available service requests for assignment
 export const getAvailableServiceRequests = async (req, res) => {
   try {
-    const assignedTickets = await AssignedTicket.find({ 
+    const assignedTickets = await AssignedTicket.find({
       serviceRequestId: { $exists: true, $ne: null },
       status: { $ne: 'Cancelled' }
     }).select('serviceRequestId').lean();
-    
+
     const assignedServiceRequestIds = assignedTickets
       .map(ticket => ticket.serviceRequestId ? ticket.serviceRequestId.toString() : null)
       .filter(id => id !== null);
-    
+
     console.log('Assigned Service Request IDs (Active):', assignedServiceRequestIds);
-    
+
     const allOpenRequests = await ServiceRequest.find({
       status: 'Open'
     })
-    .populate('userId', 'firstName lastName email phone addresses')
-    .sort({ createdAt: -1 })
-    .lean();
-    
+      .populate('userId', 'firstName lastName email phone addresses')
+      .sort({ createdAt: -1 })
+      .lean();
+
     const requestsWithAddress = allOpenRequests.map(request => {
       let finalAddress = request.address;
       if (!finalAddress || finalAddress === 'N/A') {
@@ -284,14 +287,14 @@ export const getAvailableServiceRequests = async (req, res) => {
       }
       return { ...request, address: finalAddress || 'N/A' };
     });
-    
-    const availableRequests = requestsWithAddress.filter(request => 
+
+    const availableRequests = requestsWithAddress.filter(request =>
       !assignedServiceRequestIds.includes(request._id.toString())
     );
-    
+
     console.log('Total Open Service Requests:', allOpenRequests.length);
     console.log('Available Service Requests Count:', availableRequests.length);
-    
+
     res.json(availableRequests);
   } catch (error) {
     console.error('Error in getAvailableServiceRequests:', error);

@@ -92,7 +92,7 @@ const userAmcSchema = new mongoose.Schema(
       date: { type: Date, default: Date.now },
       type: { 
         type: String, 
-        enum: ["Installation", "Regular Service", "Repair", "Filter Change", "Other"],
+        enum: ["Installation", "Regular Service", "Repair", "Filter Change", "Other", "AMC Service"],
         default: "Regular Service"
       },
       technicianName: { type: String },

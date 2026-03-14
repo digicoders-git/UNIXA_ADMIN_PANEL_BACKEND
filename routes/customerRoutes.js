@@ -15,21 +15,22 @@ import {
   deleteComplaint,
   getCustomerCompleteHistory
 } from "../controllers/customerController.js";
+import { authenticateAdmin } from "../middleware/adminAuth.js";
 
 const router = express.Router();
 
-// Specific routes FIRST (before :id routes)
+// ⚠️ SPECIFIC ROUTES FIRST (before :id routes)
 router.get("/complaints/all", getAllComplaints); // Get aggregated complaints
-router.get("/amc/dashboard", getAMCDashboard);
+router.get("/amc/dashboard", getAMCDashboard); // Get AMC dashboard
 router.post("/amc/new", createAMC); // Create new AMC for a customer
+router.get("/:id/complete-history", getCustomerCompleteHistory); // Get complete customer history - MUST BE BEFORE generic :id
 
-// Then :id routes
-router.get("/:id/complete-history", getCustomerCompleteHistory); // Get complete customer history
-router.post("/:id/amc/renew", renewAMC); // Renew AMC for a customer
+// ⚠️ THEN :id routes (specific patterns) - BEFORE generic :id route
 router.put("/complaints/:ticketId", updateComplaintStatus); // Update complaint status
 router.delete("/complaints/:ticketId", deleteComplaint); // Delete complaint
+router.post("/:id/amc/renew", renewAMC); // Renew AMC for a customer
 
-// Generic CRUD routes LAST
+// ⚠️ GENERIC CRUD routes LAST
 router.get("/", getCustomers);
 router.post("/", createCustomer);
 router.get("/:id", getCustomerById);
