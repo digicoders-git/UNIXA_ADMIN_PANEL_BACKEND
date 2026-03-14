@@ -80,6 +80,7 @@ const allowedOrigins = [
   "https://www.user.unixa.co.in",
   "https://unixa.co.in",
   "https://www.unixa.co.in",
+  "https://manager.unixa.co.in",
   "https://admin.unixa.co.in",
   "https://manager.unixa.co.in",
   "https://employee.unixa.co.in",
