@@ -1,8 +1,11 @@
 // controllers/roPartController.js
+import fs from "fs";
 import mongoose from "mongoose";
 import RoPart from "../models/RoPart.js";
 import Category from "../models/Category.js";
-import { cloudinary } from "../config/cloudinary.js";
+import { fileToUrl } from "../config/cloudinary.js";
+
+const deleteLocalFile = (p) => { if (p && fs.existsSync(p)) fs.unlinkSync(p); };
 
 /* ================= CREATE ================= */
 
@@ -40,10 +43,7 @@ export const createRoPart = async (req, res) => {
       category: category._id,
       price: Number(price),
       discountPercent: Math.max(0, Math.min(100, Number(discountPercent || 0))),
-      mainImage: {
-        url: req.file.path,
-        publicId: req.file.filename,
-      },
+      mainImage: { url: fileToUrl(req.file), publicId: req.file.path },
       description,
       amcPlans: typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans || [],
       isActive: isActive === "false" ? false : true,
@@ -149,10 +149,8 @@ export const updateRoPart = async (req, res) => {
       roPart.isActive = isActive === true || isActive === "true";
 
     if (req.file) {
-      if (roPart.mainImage?.publicId) {
-        await cloudinary.uploader.destroy(roPart.mainImage.publicId).catch(err => console.log("Cloudinary destroy error:", err));
-      }
-      roPart.mainImage = { url: req.file.path, publicId: req.file.filename };
+      deleteLocalFile(roPart.mainImage?.publicId);
+      roPart.mainImage = { url: fileToUrl(req.file), publicId: req.file.path };
     }
 
     await roPart.save();
@@ -177,10 +175,7 @@ export const deleteRoPart = async (req, res) => {
       return res.status(404).json({ message: "RO Part not found" });
     }
 
-    if (roPart.mainImage?.publicId) {
-      await cloudinary.uploader.destroy(roPart.mainImage.publicId).catch(err => console.log("Del error:", err));
-    }
-
+    deleteLocalFile(roPart.mainImage?.publicId);
     await RoPart.deleteOne({ _id: roPart._id });
     res.json({ message: "RO Part deleted" });
   } catch (err) {

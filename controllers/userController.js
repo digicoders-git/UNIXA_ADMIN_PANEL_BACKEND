@@ -1,7 +1,8 @@
-// controllers/userController.js
 import "dotenv/config";
+import fs from "fs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import { fileToUrl } from "../config/cloudinary.js";
 
 const signJwt = (user) => {
   const secret = process.env.JWT_SECRET || "fallback_secret";
@@ -207,6 +208,7 @@ export const verifyOTPAndLogin = async (req, res) => {
       message: "Login successful",
       user: {
         _id: user._id,
+        id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
@@ -216,6 +218,7 @@ export const verifyOTPAndLogin = async (req, res) => {
         city: user.city,
         state: user.state,
         pincode: user.pincode,
+        profilePicture: user.profilePicture || null,
         lastLogin: user.lastLogin
       },
       token
@@ -381,12 +384,13 @@ export const uploadUserProfilePicture = async (req, res) => {
     }
 
     // Update user with new profile picture URL
-    user.profilePicture = req.file.path;
+    const picUrl = fileToUrl(req.file);
+    user.profilePicture = picUrl;
     await user.save();
 
     res.json({
       message: "Profile picture updated successfully",
-      profilePicture: req.file.path
+      profilePicture: picUrl
     });
   } catch (error) {
     console.error("Profile picture upload error:", error);

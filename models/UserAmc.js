@@ -6,15 +6,16 @@ const userAmcSchema = new mongoose.Schema(
     userId: { 
       type: mongoose.Schema.Types.ObjectId, 
       ref: "User", 
-      required: true,
       index: true 
     },
     
     orderId: { 
       type: mongoose.Schema.Types.ObjectId, 
-      ref: "Order", 
-      required: true 
+      ref: "Order"
     },
+
+    // For offline/unregistered customers - store phone for lookup
+    customerPhone: { type: String, index: true },
 
     amcId: { type: String }, // Reference identity for the AMC
     
@@ -157,6 +158,15 @@ userAmcSchema.pre('save', function(next) {
   if (this.status === 'Active' && this.isExpired) {
     this.status = 'Expired';
   }
+
+  // Initialize nextServiceDueDate only if not already set
+  if (!this.nextServiceDueDate && this.startDate) {
+    const interval = this.serviceSchedule?.intervalMonths || 4;
+    const nextDue = new Date(this.startDate);
+    nextDue.setMonth(nextDue.getMonth() + interval);
+    this.nextServiceDueDate = nextDue;
+  }
+  
   next();
 });
 
@@ -190,7 +200,7 @@ userAmcSchema.statics.getUpcomingServiceJobs = function() {
   
   return this.find({
     status: 'Active',
-    nextServiceDueDate: { $lte: sevenDaysLater, $gte: now }
+    nextServiceDueDate: { $lte: sevenDaysLater }
   })
     .populate('userId', 'firstName lastName email phone addresses city state')
     .populate('amcPlanId')

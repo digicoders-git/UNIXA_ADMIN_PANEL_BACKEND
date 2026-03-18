@@ -1,9 +1,13 @@
-// controllers/productController.js
 import mongoose from "mongoose";
+import fs from "fs";
 import Product from "../models/Product.js";
 import Category from "../models/Category.js";
 import Review from "../models/Review.js";
-import { cloudinary } from "../config/cloudinary.js";
+import { fileToUrl } from "../config/cloudinary.js";
+
+const deleteLocalFile = (filePath) => {
+  if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+};
 
 /* ================= UTIL ================= */
 
@@ -98,12 +102,12 @@ export const createProduct = async (req, res) => {
       price: Number(price),
       discountPercent: Number(discountPercent || 0),
       mainImage: {
-        url: mainImageFile.path,
-        publicId: mainImageFile.filename,
+        url: fileToUrl(mainImageFile),
+        publicId: mainImageFile.path,
       },
       galleryImages: galleryFiles.map((file) => ({
-        url: file.path,
-        publicId: file.filename,
+        url: fileToUrl(file),
+        publicId: file.path,
       })),
       sizes: parseMaybeJSON(sizes, []),
       colors: parseMaybeJSON(colors, []),
@@ -319,24 +323,18 @@ export const updateProduct = async (req, res) => {
     }
 
     if (req.files?.mainImage?.[0]) {
-      if (product.mainImage?.publicId) {
-        await cloudinary.uploader.destroy(product.mainImage.publicId).catch(err => console.log("Cloudinary destroy error:", err));
-      }
+      deleteLocalFile(product.mainImage?.publicId);
       const file = req.files.mainImage[0];
-      product.mainImage = { url: file.path, publicId: file.filename };
+      product.mainImage = { url: fileToUrl(file), publicId: file.path };
     }
 
     if (req.files?.galleryImages?.length) {
       if (product.galleryImages?.length) {
-        for (const img of product.galleryImages) {
-          if (img.publicId) {
-            await cloudinary.uploader.destroy(img.publicId).catch(err => console.log("Cloudinary destroy error:", err));
-          }
-        }
+        for (const img of product.galleryImages) deleteLocalFile(img.publicId);
       }
       product.galleryImages = req.files.galleryImages.map((file) => ({
-        url: file.path,
-        publicId: file.filename,
+        url: fileToUrl(file),
+        publicId: file.path,
       }));
     }
 
@@ -367,17 +365,8 @@ export const deleteProduct = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    if (product.mainImage?.publicId) {
-      await cloudinary.uploader.destroy(product.mainImage.publicId).catch(err => console.log("Del error:", err));
-    }
-    if (product.galleryImages?.length) {
-      for (const img of product.galleryImages) {
-        if (img.publicId) {
-          await cloudinary.uploader.destroy(img.publicId).catch(err => console.log("Del error:", err));
-        }
-      }
-    }
-
+    deleteLocalFile(product.mainImage?.publicId);
+    for (const img of product.galleryImages || []) deleteLocalFile(img.publicId);
     await Product.deleteOne({ _id: product._id });
     res.json({ message: "Product deleted" });
   } catch (err) {

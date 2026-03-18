@@ -161,29 +161,33 @@ export const createSpecificNotification = async (req, res) => {
     try {
         const { userId, title, message, type } = req.body;
         
-        if (!userId || !title || !message) {
-            return res.status(400).json({ message: "userId (targetId), title, and message are required" });
+        if (!title || !message) {
+            return res.status(400).json({ message: "title and message are required" });
         }
 
         let notification;
-        // Check if target is Employee or User
-        const employee = await Employee.findById(userId);
-        if (employee) {
-            notification = await EmployeeNotification.create({
-                employeeId: userId,
-                title,
-                message,
-                type: type || 'Info',
-                isRead: false
-            });
-        } else {
-            notification = await UserNotification.create({
-                userId: userId,
-                title,
-                message,
-                type: type || 'Info',
-                isRead: false
-            });
+        // Check if target is Employee or User - Only if userId is valid ObjectId
+        const isValidId = userId && /^[0-9a-fA-F]{24}$/.test(userId);
+        
+        if (isValidId) {
+            const employee = await Employee.findById(userId);
+            if (employee) {
+                notification = await EmployeeNotification.create({
+                    employeeId: userId,
+                    title,
+                    message,
+                    type: type || 'Info',
+                    isRead: false
+                });
+            } else {
+                notification = await UserNotification.create({
+                    userId: userId,
+                    title,
+                    message,
+                    type: type || 'Info',
+                    isRead: false
+                });
+            }
         }
 
         // Also save to global history

@@ -9,6 +9,84 @@ import Employee from "../models/Employee.js";
 import UserAmc from "../models/UserAmc.js";
 import AssignedTicket from "../models/AssignedTicket.js";
 
+// Lightweight endpoint - sirf summary cards ke liye (fast)
+export const getDashboardSummary = async (req, res) => {
+  try {
+    const now = moment().tz("Asia/Kolkata");
+    const startOfToday = now.clone().startOf("day").toDate();
+    const startOfMonth = now.clone().startOf("month").toDate();
+
+    const [
+      totalOrders,
+      totalProducts,
+      activeProducts,
+      totalCategories,
+      totalEnquiries,
+      unreadEnquiries,
+      activeOffersCount,
+      todayOrdersCount,
+      totalEmployees,
+      activeEmployees,
+      allRevenueAgg,
+      monthRevenueAgg,
+      amcCounts,
+    ] = await Promise.all([
+      Order.countDocuments(),
+      Product.countDocuments(),
+      Product.countDocuments({ isActive: true }),
+      Category.countDocuments(),
+      Enquiry.countDocuments(),
+      Enquiry.countDocuments({ isRead: false }),
+      Offer.countDocuments({ isActive: true }),
+      Order.countDocuments({ createdAt: { $gte: startOfToday } }),
+      Employee.countDocuments(),
+      Employee.countDocuments({ status: true }),
+      Order.aggregate([{ $group: { _id: null, revenue: { $sum: "$total" } } }]),
+      Order.aggregate([
+        { $match: { createdAt: { $gte: startOfMonth } } },
+        { $group: { _id: null, revenue: { $sum: "$total" } } },
+      ]),
+      UserAmc.aggregate([
+        { $group: { _id: "$status", count: { $sum: 1 } } }
+      ]),
+    ]);
+
+    const totalRevenue = allRevenueAgg[0]?.revenue || 0;
+    const monthRevenue = monthRevenueAgg[0]?.revenue || 0;
+    const activeAmcCount = amcCounts.find(a => a._id === 'Active')?.count || 0;
+    const expiredAmcCount = amcCounts.find(a => a._id === 'Expired')?.count || 0;
+    const totalAmcCount = amcCounts.reduce((sum, a) => sum + a.count, 0);
+
+    res.json({
+      summaryCards: {
+        totalRevenue,
+        totalOrders,
+        avgOrderValue: totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0,
+        monthRevenue,
+        totalProducts,
+        activeProducts,
+        totalCategories,
+        totalEnquiries,
+        unreadEnquiries,
+        activeOffers: activeOffersCount,
+        todayOrders: todayOrdersCount,
+        totalEmployees,
+        activeEmployees,
+        activeAmcCount,
+        expiredAmcCount,
+        totalAmcCount,
+        dueAmcCount: 0,
+      },
+      meta: {
+        generatedAtIST: now.format("DD-MM-YYYY hh:mm:ss A"),
+      },
+    });
+  } catch (err) {
+    console.error("getDashboardSummary error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 export const getDashboardStats = async (req, res) => {
   try {
     // Use IST for time-based analytics
@@ -17,7 +95,7 @@ export const getDashboardStats = async (req, res) => {
     const startOfMonth = now.clone().startOf("month").toDate();
     const last7Days = now.clone().subtract(6, "days").startOf("day").toDate();
 
-    // ---------- BASIC COUNTS ----------
+    // ---------- BATCH 1: Simple counts ----------
     const [
       totalOrders,
       totalProducts,
@@ -27,8 +105,26 @@ export const getDashboardStats = async (req, res) => {
       totalEnquiries,
       unreadEnquiries,
       activeOffersCount,
-      allRevenueAgg,
       todayOrdersCount,
+      totalEmployees,
+      activeEmployees,
+    ] = await Promise.all([
+      Order.countDocuments(),
+      Product.countDocuments(),
+      Product.countDocuments({ isActive: true }),
+      Category.countDocuments(),
+      Category.countDocuments({ isActive: true }),
+      Enquiry.countDocuments(),
+      Enquiry.countDocuments({ isRead: false }),
+      Offer.countDocuments({ isActive: true }),
+      Order.countDocuments({ createdAt: { $gte: startOfToday } }),
+      Employee.countDocuments(),
+      Employee.countDocuments({ status: true }),
+    ]);
+
+    // ---------- BATCH 2: Aggregations & list queries ----------
+    const [
+      allRevenueAgg,
       monthRevenueAgg,
       statusAgg,
       paymentMethodAgg,
@@ -42,73 +138,27 @@ export const getDashboardStats = async (req, res) => {
       allUserAmcsForDue,
       openAmcTicketsForDue,
     ] = await Promise.all([
-      Order.countDocuments(),
-      Product.countDocuments(),
-      Product.countDocuments({ isActive: true }),
-      Category.countDocuments(),
-      Category.countDocuments({ isActive: true }),
-      Enquiry.countDocuments(),
-      Enquiry.countDocuments({ isRead: false }),
-      Offer.countDocuments({ isActive: true }),
-
-      // Total revenue
-      Order.aggregate([
-        { $group: { _id: null, revenue: { $sum: "$total" } } },
-      ]),
-
-      // Today's orders
-      Order.countDocuments({ createdAt: { $gte: startOfToday } }),
-
-      // This month's revenue
+      Order.aggregate([{ $group: { _id: null, revenue: { $sum: "$total" } } }]),
       Order.aggregate([
         { $match: { createdAt: { $gte: startOfMonth } } },
         { $group: { _id: null, revenue: { $sum: "$total" } } },
       ]),
-
-      // Orders by status
-      Order.aggregate([
-        { $group: { _id: "$status", count: { $sum: 1 } } },
-      ]),
-
-      // Orders by payment method (COD, ONLINE, etc.)
-      Order.aggregate([
-        { $group: { _id: "$paymentMethod", count: { $sum: 1 } } },
-      ]),
-
-      // Orders by payment status (pending, paid, failed)
-      Order.aggregate([
-        { $group: { _id: "$paymentStatus", count: { $sum: 1 } } },
-      ]),
-
-      // Sales in last 7 days (graph data)
+      Order.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+      Order.aggregate([{ $group: { _id: "$paymentMethod", count: { $sum: 1 } } }]),
+      Order.aggregate([{ $group: { _id: "$paymentStatus", count: { $sum: 1 } } }]),
       Order.aggregate([
         { $match: { createdAt: { $gte: last7Days } } },
         {
           $group: {
-            _id: {
-              $dateToString: {
-                format: "%Y-%m-%d",
-                date: "$createdAt",
-                timezone: "Asia/Kolkata",
-              },
-            },
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "Asia/Kolkata" } },
             revenue: { $sum: "$total" },
             orders: { $sum: 1 },
           },
         },
         { $sort: { _id: 1 } },
       ]),
-
-      // Products by category (for pie chart)
       Product.aggregate([
-        {
-          $lookup: {
-            from: "categories",
-            localField: "category",
-            foreignField: "_id",
-            as: "category",
-          },
-        },
+        { $lookup: { from: "categories", localField: "category", foreignField: "_id", as: "category" } },
         { $unwind: "$category" },
         {
           $group: {
@@ -116,37 +166,15 @@ export const getDashboardStats = async (req, res) => {
             name: { $first: "$category.name" },
             slug: { $first: "$category.slug" },
             totalProducts: { $sum: 1 },
-            activeProducts: {
-              $sum: {
-                $cond: [{ $eq: ["$isActive", true] }, 1, 0],
-              },
-            },
+            activeProducts: { $sum: { $cond: [{ $eq: ["$isActive", true] }, 1, 0] } },
           },
         },
         { $sort: { totalProducts: -1 } },
       ]),
-
-      // Latest 10 orders
-      Order.find()
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate("items.product", "name slug"),
-
-      // Latest 10 products
-      Product.find()
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate("category", "name slug"),
-
-      // Latest 5 enquiries
-      Enquiry.find()
-        .sort({ createdAt: -1 })
-        .limit(5),
-
-      // List of active offers
+      Order.find().sort({ createdAt: -1 }).limit(10).populate("items.product", "name slug"),
+      Product.find().sort({ createdAt: -1 }).limit(10).populate("category", "name slug"),
+      Enquiry.find().sort({ createdAt: -1 }).limit(5),
       Offer.find({ isActive: true }).sort({ createdAt: -1 }).limit(10),
-
-      // AMC stats
       UserAmc.find().select('status startDate endDate servicesUsed servicesTotal'),
       AssignedTicket.find({ amcId: { $exists: true }, status: { $in: ['Pending', 'In Progress'] } }).select('amcId'),
     ]);
@@ -180,15 +208,6 @@ export const getDashboardStats = async (req, res) => {
       dueDate.setMonth(dueDate.getMonth() + ((amc.servicesUsed + 1) * intervalMonths));
       return dueDate <= new Date(nowTime + fifteenDaysInMs);
     }).length;
-
-    let totalEmployees = 0;
-    let activeEmployees = 0;
-    try {
-      totalEmployees = await Employee.countDocuments();
-      activeEmployees = await Employee.countDocuments({ status: true });
-    } catch (empErr) {
-      console.error("Failed to fetch employee stats:", empErr);
-    }
 
     const totalRevenue = allRevenueAgg[0]?.revenue || 0;
     const monthRevenue = monthRevenueAgg[0]?.revenue || 0;

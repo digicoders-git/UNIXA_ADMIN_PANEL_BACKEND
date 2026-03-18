@@ -1,7 +1,6 @@
 import ServiceRequest from "../models/ServiceRequest.js";
 import UserNotification from "../models/UserNotification.js";
 import UserAmc from "../models/UserAmc.js";
-import { v2 as cloudinary } from "cloudinary";
 
 export const getAllServiceRequests = async (req, res) => {
   try {
@@ -60,23 +59,8 @@ export const updateServiceRequest = async (req, res) => {
     if (priority) request.priority = priority;
 
     if (completionPhotos && Array.isArray(completionPhotos)) {
-      const uploadedUrls = [];
-      for (const photo of completionPhotos) {
-        if (photo.startsWith('http')) {
-          uploadedUrls.push(photo);
-        } else {
-          try {
-            const uploadResult = await cloudinary.uploader.upload(photo, {
-              folder: 'service-completions',
-              resource_type: 'image'
-            });
-            uploadedUrls.push(uploadResult.secure_url);
-          } catch (uploadErr) {
-            console.error('Photo upload failed:', uploadErr);
-          }
-        }
-      }
-      request.completionPhotos = uploadedUrls;
+      // Only accept already-uploaded URLs (base64 upload removed)
+      request.completionPhotos = completionPhotos.filter(p => p.startsWith('http'));
     }
     if (completionRemark !== undefined) request.completionRemark = completionRemark;
 

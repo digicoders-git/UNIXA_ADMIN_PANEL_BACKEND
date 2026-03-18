@@ -79,21 +79,28 @@ export const getCustomerCompleteHistory = async (req, res) => {
     let allAmcs = [];
 
     // 1. Find User by phone to get potential userId
-    const user = await User.findOne({ phone: customer.mobile || id });
+    const user = await User.findOne({ 
+      $or: [
+        { phone: customer.mobile },
+        { phone: { $regex: (customer.mobile || '').replace(/\D/g,'').slice(-10) + '$' } }
+      ]
+    });
     const userIds = [];
-    if (mongoose.Types.ObjectId.isValid(id)) userIds.push(id);
+    if (mongoose.Types.ObjectId.isValid(id)) userIds.push(new mongoose.Types.ObjectId(id));
     if (user) userIds.push(user._id);
 
-    // Get order IDs to search by reference
+    // Get order IDs to search by reference (covers offline orders too)
     const orderIds = orders.map(o => o._id);
 
-    // 2. Search in UserAmc collection
-    const userAmcs = await UserAmc.find({
-      $or: [
-        { userId: { $in: userIds } },
-        { orderId: { $in: orderIds } }
-      ]
-    }).populate('amcPlanId').sort({ createdAt: -1 }).lean();
+    // 2. Search in UserAmc collection - by userId OR orderId OR customerPhone
+    const orConditions = [];
+    if (orderIds.length > 0) orConditions.push({ orderId: { $in: orderIds } });
+    if (customer.mobile) orConditions.push({ customerPhone: customer.mobile });
+    if (userIds.length > 0) orConditions.push({ userId: { $in: userIds } });
+
+    const userAmcs = orConditions.length > 0
+      ? await UserAmc.find({ $or: orConditions }).populate('amcPlanId').sort({ createdAt: -1 }).lean()
+      : [];
 
     // 3. Include AMCs from Customer model (Manual entries) - ONLY if actually taken
     // Convert Mongoose document to plain object if needed
@@ -128,19 +135,25 @@ export const getCustomerCompleteHistory = async (req, res) => {
 
     console.log("Total consolidated AMCs:", allAmcs.length);
 
-    // Format orders data
-    const formattedOrders = orders.map(order => ({
-      _id: order._id,
-      productName: order.items?.[0]?.productName || "N/A",
-      quantity: order.items?.[0]?.quantity || 1,
-      total: order.total,
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-      source: order.source || "online",
-      shippingAddress: order.shippingAddress,
-      createdAt: order.createdAt,
-      items: order.items
-    }));
+    // Format orders data - each item as separate row for AMC matching
+    const formattedOrders = orders.flatMap(order =>
+      (order.items || []).map(item => ({
+        _id: order._id,
+        product: item.product,
+        productType: item.productType || 'Product',
+        productName: item.productName || 'N/A',
+        productImage: item.productImage,
+        quantity: item.quantity || 1,
+        total: order.total,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        source: order.source || 'online',
+        shippingAddress: order.shippingAddress,
+        createdAt: order.createdAt,
+        orderId: order._id,
+        items: order.items
+      }))
+    );
 
     // Format consolidated AMCs data - ONLY include AMCs that were actually purchased/taken
     const formattedAmcs = allAmcs
@@ -152,6 +165,7 @@ export const getCustomerCompleteHistory = async (req, res) => {
       })
       .map(amc => ({
         _id: amc._id || amc.amcId,
+        productId: amc.productId,
         productName: amc.productName || amc.planName,
         amcPlanName: amc.amcPlanName || amc.planName,
         status: amc.status,

@@ -155,7 +155,7 @@ export const completeTicket = async (req, res) => {
 
         if (amcToUpdate) {
           if (ticket.visitType === 'AMC_REMINDER') {
-            const reminderIndex = amcToUpdate.reminderHistory.findIndex(r => r.ticketId.toString() === ticket._id.toString());
+            const reminderIndex = amcToUpdate.reminderHistory.findIndex(r => r.ticketId?.toString() === ticket._id.toString());
             if (reminderIndex !== -1) {
               amcToUpdate.reminderHistory[reminderIndex].status = 'Completed';
               amcToUpdate.reminderHistory[reminderIndex].completedAt = new Date();
@@ -164,14 +164,22 @@ export const completeTicket = async (req, res) => {
               amcToUpdate.reminderHistory[reminderIndex].customerFeedback = customerFeedback;
             }
 
-            amcToUpdate.servicesUsed += 1;
-            console.log(`[completeTicket] AMC reminder completed. AMC service updated. New used count: ${amcToUpdate.servicesUsed}`);
+            amcToUpdate.servicesUsed = (amcToUpdate.servicesUsed || 0) + 1;
+
+            // Next service due = completion date + 4 months
+            const completionDate = new Date(ticket.completedAt);
+            const interval = amcToUpdate.serviceSchedule?.intervalMonths || 4;
+            const nextDue = new Date(completionDate);
+            nextDue.setMonth(nextDue.getMonth() + interval);
+            amcToUpdate.nextServiceDueDate = nextDue;
+            amcToUpdate.reminderSent = false;
+            console.log(`[completeTicket] servicesUsed: ${amcToUpdate.servicesUsed}, nextServiceDueDate: ${nextDue}`);
 
             amcToUpdate.serviceHistory.push({
-              date: new Date(),
+              date: completionDate,
               type: 'AMC Service',
               technicianName: ticket.assignedTo,
-              notes: `Completed 4-month AMC Reminder: ${ticket.title}${ticket.notes ? ' - ' + ticket.notes : ''}`,
+              notes: `Completed AMC Service: ${ticket.title}${ticket.notes ? ' - ' + ticket.notes : ''}`,
               complaintId: ticket._id.toString()
             });
           } else {

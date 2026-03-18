@@ -8,7 +8,8 @@ import {
   getUserOrders,
   deleteOrder,
   updateOrderDetails,
-  getCustomersFromOrders
+  getCustomersFromOrders,
+  backfillDeliveredOrderAmcs
 } from "../controllers/orderController.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -18,13 +19,13 @@ const router = express.Router();
 router.post("/", placeOrder);
 router.get("/user/:userId", getUserOrders);
 
-
 // admin
 router.get("/", requireAuth, listOrders);
 router.get("/customers", getCustomersFromOrders);
+router.post("/backfill-amcs", requireAuth, backfillDeliveredOrderAmcs);
 router.get("/:orderId", requireAuth, getOrder);
 router.put("/:orderId/status", requireAuth, updateOrderStatus);
 router.delete("/:orderId", requireAuth, deleteOrder);
-router.patch("/:orderId", requireAuth, updateOrderDetails); // For editing details like address, etc.
+router.patch("/:orderId", requireAuth, updateOrderDetails);
 
 export default router;

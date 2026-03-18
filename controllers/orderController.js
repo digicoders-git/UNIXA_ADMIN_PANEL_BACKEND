@@ -146,7 +146,7 @@ export const placeOrder = async (req, res) => {
     const { discount, total } = applyOffer(offer, subtotal);
 
     const order = await Order.create({
-      userId: userId || null, // Allow null for offline
+      userId: userId || null,
       items: itemsForOrder,
       subtotal,
       discount,
@@ -163,32 +163,51 @@ export const placeOrder = async (req, res) => {
       source: source || "online"
     });
 
-    // ========== AUTO-ACTIVATE AMC PLANS FOR USER PANEL ==========
-    if (userId) { // Only if registered user
+    // If offline order is created with delivered status, activate AMC immediately
+    if (source === "offline" && (status === "delivered")) {
       try {
-        console.log('🔄 Starting AMC auto-activation for order:', order._id);
-        console.log('📦 Total items in order:', order.items.length);
-
-        // We need populated products/roParts to get their amcPlans
-        const fullProducts = products;
-        const fullRoParts = roParts;
-
-        for (const item of order.items) {
-          // ... (Logic to activate AMC based on product's internal AMC plans or selected plan) ...
-          // Since offline order now sends amcPlan explicitly, we could use that directly
-          if (item.amcPlan && item.amcId) {
-            // If manually selected AMC, handling logic would go here
-            // For now, keeping existing auto-activation logic for online orders or implied plans
-          }
+        let effectiveUserId = userId || null;
+        if (!effectiveUserId && shippingAddress?.phone) {
+          const userByPhone = await User.findOne({ phone: shippingAddress.phone }).select('_id');
+          if (userByPhone) effectiveUserId = userByPhone._id;
         }
-      } catch (e) { console.error(e); }
+        for (const item of order.items) {
+          if (!item.amcPlan) continue;
+          const existingAmc = await UserAmc.findOne({ orderId: order._id, productId: item.product });
+          if (existingAmc) continue;
+          const selectedPlan = await AmcPlan.findById(item.amcPlan);
+          if (!selectedPlan || !selectedPlan.isActive) continue;
+          const startDate = new Date();
+          const endDate = new Date();
+          endDate.setMonth(endDate.getMonth() + (selectedPlan.durationMonths || 12));
+          await UserAmc.create({
+            userId: effectiveUserId || null,
+            orderId: order._id,
+            customerPhone: shippingAddress?.phone || null,
+            amcId: item.amcId || `AMC${Date.now()}${Math.floor(Math.random() * 1000)}`,
+            productId: item.product,
+            productType: item.productType || 'Product',
+            productName: item.productName,
+            productImage: item.productImage,
+            amcPlanId: selectedPlan._id,
+            amcPlanName: selectedPlan.name,
+            amcPlanPrice: selectedPlan.price,
+            durationMonths: selectedPlan.durationMonths || 12,
+            startDate,
+            endDate,
+            servicesTotal: selectedPlan.servicesIncluded || 4,
+            servicesUsed: 0,
+            partsIncluded: selectedPlan.partsIncluded || false,
+            status: 'Active',
+            paymentStatus: 'Paid',
+            amountPaid: item.amcPrice || selectedPlan.price
+          });
+          console.log(`✅ AMC activated on order create for ${item.productName}`);
+        }
+      } catch (amcErr) {
+        console.error('❌ AMC activation on create failed:', amcErr.message);
+      }
     }
-    // ========== END AMC AUTO-ACTIVATION ==========
-
-    // Sync with Customer Database (Simplified for now)
-    try {
-      // ... Customer sync logic
-    } catch (e) { }
 
     // Create Transaction Record
     try {
@@ -227,6 +246,69 @@ export const placeOrder = async (req, res) => {
       return res.status(400).json({ message: messages.join(', ') });
     }
     res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// BACKFILL - Create AMCs for existing delivered orders that missed AMC creation
+export const backfillDeliveredOrderAmcs = async (req, res) => {
+  try {
+    const deliveredOrders = await Order.find({
+      status: 'delivered',
+      'items.amcPlan': { $exists: true, $ne: null }
+    }).lean();
+
+    let created = 0, skipped = 0;
+
+    for (const order of deliveredOrders) {
+      let effectiveUserId = order.userId;
+      if (!effectiveUserId && order.shippingAddress?.phone) {
+        const userByPhone = await User.findOne({ phone: order.shippingAddress.phone }).select('_id');
+        if (userByPhone) effectiveUserId = userByPhone._id;
+      }
+
+      for (const item of order.items) {
+        if (!item.amcPlan) continue;
+
+        const existingAmc = await UserAmc.findOne({ orderId: order._id, productId: item.product });
+        if (existingAmc) { skipped++; continue; }
+
+        const selectedPlan = await AmcPlan.findById(item.amcPlan);
+        if (!selectedPlan) { skipped++; continue; }
+
+        const startDate = order.deliveredAt || order.updatedAt || order.createdAt;
+        const endDate = new Date(startDate);
+        endDate.setMonth(endDate.getMonth() + (selectedPlan.durationMonths || 12));
+
+        await UserAmc.create({
+          userId: effectiveUserId || null,
+          orderId: order._id,
+          customerPhone: order.shippingAddress?.phone || null,
+          amcId: item.amcId || `AMC${Date.now()}${Math.floor(Math.random() * 1000)}`,
+          productId: item.product,
+          productType: item.productType || 'Product',
+          productName: item.productName,
+          productImage: item.productImage,
+          amcPlanId: selectedPlan._id,
+          amcPlanName: selectedPlan.name,
+          amcPlanPrice: selectedPlan.price,
+          durationMonths: selectedPlan.durationMonths || 12,
+          startDate: new Date(startDate),
+          endDate,
+          servicesTotal: selectedPlan.servicesIncluded || 4,
+          servicesUsed: 0,
+          partsIncluded: selectedPlan.partsIncluded || false,
+          status: 'Active',
+          paymentStatus: 'Paid',
+          amountPaid: item.amcPrice || selectedPlan.price
+        });
+        created++;
+      }
+    }
+
+    res.json({ message: `Backfill complete`, created, skipped });
+  } catch (err) {
+    console.error('backfillDeliveredOrderAmcs error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
@@ -298,110 +380,57 @@ export const updateOrderStatus = async (req, res) => {
     await order.save();
 
     // Auto-create UserAMC when order is delivered
-    if (status === 'delivered' && oldStatus !== 'delivered' && order.userId) {
+    if (status === 'delivered' && oldStatus !== 'delivered') {
       try {
-        console.log('🎯 Order delivered, activating AMC plans...');
-        console.log('Order ID:', order._id);
-        console.log('User ID:', order.userId);
-
-        for (const item of order.items) {
-          console.log(`\nProcessing item: ${item.productName}`);
-
-          // Check if customer selected specific AMC
-          if (item.amcPlan && item.amcId) {
-            console.log('  ✅ Customer selected AMC, using that...');
-            const selectedPlan = await AmcPlan.findById(item.amcPlan);
-            if (!selectedPlan || !selectedPlan.isActive) {
-              console.log('  ⏭️  AMC plan not found or inactive');
-              continue;
-            }
-
-            const startDate = new Date();
-            const endDate = new Date();
-            endDate.setMonth(endDate.getMonth() + (selectedPlan.durationMonths || 12));
-
-            const userAmc = await UserAmc.create({
-              userId: order.userId,
-              orderId: order._id,
-              amcId: item.amcId,
-              productId: item.product,
-              productType: item.productType || 'Product',
-              productName: item.productName,
-              productImage: item.productImage,
-              amcPlanId: selectedPlan._id,
-              amcPlanName: selectedPlan.name,
-              amcPlanPrice: selectedPlan.price,
-              durationMonths: selectedPlan.durationMonths || 12,
-              startDate,
-              endDate,
-              servicesTotal: selectedPlan.servicesIncluded || 4,
-              servicesUsed: 0,
-              partsIncluded: selectedPlan.partsIncluded || false,
-              status: 'Active',
-              paymentStatus: 'Paid',
-              amountPaid: item.amcPrice || selectedPlan.price
-            });
-
-            console.log(`  ✅ AMC activated! UserAmc ID: ${userAmc._id}`);
-          } else {
-            // No AMC selected by customer, check if product has AMC plans
-            console.log('  ℹ️  No AMC selected, checking product AMC plans...');
-
-            let productData = null;
-            if (item.productType === 'RoPart') {
-              productData = await RoPart.findById(item.product).populate('amcPlans');
-            } else {
-              productData = await Product.findById(item.product).populate('amcPlans');
-            }
-
-            if (!productData || !productData.amcPlans || productData.amcPlans.length === 0) {
-              console.log('  ⏭️  No AMC plans available for this product');
-              continue;
-            }
-
-            // Get first active AMC plan
-            const firstActivePlan = productData.amcPlans.find(p => p && p.isActive !== false);
-            if (!firstActivePlan) {
-              console.log('  ⏭️  No active AMC plans found');
-              continue;
-            }
-
-            console.log(`  📦 Auto-activating first AMC plan: ${firstActivePlan.name}`);
-
-            const startDate = new Date();
-            const endDate = new Date();
-            endDate.setMonth(endDate.getMonth() + (firstActivePlan.durationMonths || 12));
-
-            const userAmc = await UserAmc.create({
-              userId: order.userId,
-              orderId: order._id,
-              amcId: `AMC${Date.now()}${Math.floor(Math.random() * 1000)}`,
-              productId: item.product,
-              productType: item.productType || 'Product',
-              productName: item.productName,
-              productImage: item.productImage,
-              amcPlanId: firstActivePlan._id,
-              amcPlanName: firstActivePlan.name,
-              amcPlanPrice: firstActivePlan.price,
-              durationMonths: firstActivePlan.durationMonths || 12,
-              startDate,
-              endDate,
-              servicesTotal: firstActivePlan.servicesIncluded || 4,
-              servicesUsed: 0,
-              partsIncluded: firstActivePlan.partsIncluded || false,
-              status: 'Active',
-              paymentStatus: 'Paid',
-              amountPaid: firstActivePlan.price
-            });
-
-            console.log(`  ✅ AMC auto-activated! UserAmc ID: ${userAmc._id}`);
-          }
+        // Try to find registered user by phone (for offline orders where userId may be null)
+        let effectiveUserId = order.userId;
+        if (!effectiveUserId && order.shippingAddress?.phone) {
+          const userByPhone = await User.findOne({ phone: order.shippingAddress.phone }).select('_id');
+          if (userByPhone) effectiveUserId = userByPhone._id;
         }
 
-        console.log('🎉 AMC activation completed!');
+        for (const item of order.items) {
+          // Skip if no AMC plan was selected for this item
+          if (!item.amcPlan) continue;
+
+          // Skip if AMC already exists for this order+product combo
+          const existingAmc = await UserAmc.findOne({ orderId: order._id, productId: item.product });
+          if (existingAmc) continue;
+
+          const selectedPlan = await AmcPlan.findById(item.amcPlan);
+          if (!selectedPlan || !selectedPlan.isActive) continue;
+
+          const startDate = new Date();
+          const endDate = new Date();
+          endDate.setMonth(endDate.getMonth() + (selectedPlan.durationMonths || 12));
+
+          await UserAmc.create({
+            userId: effectiveUserId || null,
+            orderId: order._id,
+            customerPhone: order.shippingAddress?.phone || null,
+            amcId: item.amcId || `AMC${Date.now()}${Math.floor(Math.random() * 1000)}`,
+            productId: item.product,
+            productType: item.productType || 'Product',
+            productName: item.productName,
+            productImage: item.productImage,
+            amcPlanId: selectedPlan._id,
+            amcPlanName: selectedPlan.name,
+            amcPlanPrice: selectedPlan.price,
+            durationMonths: selectedPlan.durationMonths || 12,
+            startDate,
+            endDate,
+            servicesTotal: selectedPlan.servicesIncluded || 4,
+            servicesUsed: 0,
+            partsIncluded: selectedPlan.partsIncluded || false,
+            status: 'Active',
+            paymentStatus: 'Paid',
+            amountPaid: item.amcPrice || selectedPlan.price
+          });
+
+          console.log(`✅ AMC activated for ${item.productName} (order: ${order._id})`);
+        }
       } catch (amcErr) {
-        console.error('❌ Error activating AMC:', amcErr);
-        console.error('Stack:', amcErr.stack);
+        console.error('❌ Error activating AMC:', amcErr.message);
       }
     }
 
@@ -477,13 +506,35 @@ export const getCustomersFromOrders = async (req, res) => {
   try {
     const { search } = req.query;
 
-    const [orders, leads] = await Promise.all([
+    const [orders, leads, actualCustomers] = await Promise.all([
       Order.find().sort({ createdAt: -1 }),
-      Lead.find().sort({ createdAt: -1 })
+      Lead.find().sort({ createdAt: -1 }),
+      Customer.find().lean()
     ]);
 
     // Extract unique customers based on phone number
     const customerMap = new Map();
+
+    // Process Actual Customers first (highest authority)
+    actualCustomers.forEach(cust => {
+      const phone = cust.mobile;
+      if (!phone) return;
+
+      customerMap.set(phone, {
+        ...cust,
+        _id: cust._id,
+        phone: phone,
+        mobile: phone,
+        type: cust.type || "Existing",
+        source: cust.source || "Manual",
+        status: cust.status || "Active",
+        orderItems: [],
+        orderCount: 0,
+        amcCount: 0,
+        actualCustomer: true,
+        createdAt: cust.createdAt
+      });
+    });
 
     // Process Orders
     orders.forEach(order => {
@@ -524,14 +575,14 @@ export const getCustomersFromOrders = async (req, res) => {
       });
     });
 
-    // Process Leads as Customers
+    // Process Leads
     leads.forEach(lead => {
       const phone = lead.phone;
       if (!phone) return;
 
       if (!customerMap.has(phone)) {
         customerMap.set(phone, {
-          _id: phone, // Use phone as _id for consistent lookup in complete-history
+          _id: phone,
           phone: phone,
           name: lead.name,
           mobile: phone,
@@ -551,18 +602,14 @@ export const getCustomersFromOrders = async (req, res) => {
           createdAt: lead.createdAt
         });
       } else {
-        // If already exists as an order customer, maybe update the type if it's a lead?
-        // Actually, usually an order customer is higher priority.
-        // But we can mark that they were also a lead.
         const customer = customerMap.get(phone);
-        if (customer.type === 'Order Customer') {
+        if (customer.type === 'Order Customer' || customer.actualCustomer) {
           customer.isAlsoLead = true;
           customer.leadId = lead._id;
           if (!customer.source) customer.source = lead.source;
         }
       }
     });
-
 
     // Fetch all User AMCs to count them
     const allUserAmcs = await UserAmc.find().lean();
@@ -580,17 +627,29 @@ export const getCustomersFromOrders = async (req, res) => {
 
     // Map counts to customers
     customers.forEach(customer => {
-      const phoneSuffix = customer.mobile.slice(-10);
+      const phoneSuffix = (customer.mobile || "").replace(/\D/g, '').slice(-10);
       const userId = phoneToUserId.get(phoneSuffix);
 
       // Count AMCs for this customer by phone suffix OR userId
       const customerAmcs = allUserAmcs.filter(amc => {
-        const amcPhone = amc.shippingAddress?.phone || "";
-        const amcPhoneSuffix = amcPhone.slice(-10);
+        const amcPhone = amc.customerPhone || "";
+        const amcPhoneSuffix = amcPhone.replace(/\D/g, '').slice(-10);
         return amcPhoneSuffix === phoneSuffix || (userId && amc.userId?.toString() === userId);
       });
 
-      customer.amcCount = customerAmcs.length;
+      let amcCount = customerAmcs.length;
+      
+      // If it's an actual customer and has a manual plan name set, add it if not already in UserAmc
+      if (customer.amcDetails && customer.amcDetails.planName && customer.amcDetails.status !== 'Not Taken') {
+        // Only count if it's not already covered by UserAmc (UserAmc usually uses a mongo ObjectID for orderId)
+        // But for simplicity, let's just make sure it's counted if there are no UserAmcs or if we want to be safe
+        // Actually, if we use consolidated counts, it's better.
+        // Let's just check if it was missing.
+        const path = customer.amcDetails;
+        if (path.planName) amcCount = Math.max(amcCount, 1); // If manual exists, at least 1
+      }
+      
+      customer.amcCount = amcCount;
     });
 
     // Apply search filter

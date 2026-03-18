@@ -12,27 +12,54 @@ import AssignedTicket from "../models/AssignedTicket.js";
 export const getUserAmcHistoryByPhone = async (req, res) => {
   try {
     const { phone } = req.params;
+    if (!phone) return res.status(400).json({ message: "Phone number is required" });
 
-    // Find user by phone
-    const user = await User.findOne({ phone }).select('_id firstName lastName phone email');
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    // Clean phone number to get last 10 digits for robust matching
+    const last10 = phone.replace(/\D/g, '').slice(-10);
+    
+    // 1. Find User (if exists)
+    const user = await User.findOne({ 
+      $or: [
+        { phone },
+        { phone: { $regex: last10 + '$' } }
+      ]
+    }).select('_id firstName lastName phone email').lean();
+
+    // 2. Build AMC query
+    const amcQuery = {
+      $or: [
+        { customerPhone: phone },
+        { customerPhone: { $regex: last10 + '$' } }
+      ]
+    };
+    
+    if (user) {
+      amcQuery.$or.push({ userId: user._id });
     }
 
-    // Get all AMCs for this user
-    const amcs = await UserAmc.find({ userId: user._id })
+    // 3. Get all AMCs
+    const amcs = await UserAmc.find(amcQuery)
       .populate('amcPlanId', 'name')
       .populate('productId', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (amcs.length === 0 && !user) {
+      return res.status(404).json({ message: "No records found for this phone number" });
+    }
+
+    // 4. Construct response
+    // Use user data if found, otherwise use data from the first AMC record
+    const responseUser = user || {
+      _id: null,
+      firstName: amcs[0]?.customerPhone || phone,
+      lastName: '(Guest)',
+      phone: phone,
+      email: ''
+    };
 
     res.json({
-      user: {
-        _id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        phone: user.phone,
-        email: user.email
-      },
+      user: responseUser,
       amcs: amcs.map(amc => ({
         _id: amc._id,
         productName: amc.productName,
@@ -59,18 +86,41 @@ export const getAllUserAmcs = async (req, res) => {
       .populate('userId', 'firstName lastName phone email addresses')
       .populate('amcPlanId', 'name')
       .populate('productId', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
+    // Collect all offline phones in one go
+    const offlinePhones = [...new Set(amcs.filter(a => !a.userId && a.customerPhone).map(a => a.customerPhone))];
+    
+    // Single query for all offline orders
+    const offlineOrders = offlinePhones.length > 0
+      ? await Order.find({ 'shippingAddress.phone': { $in: offlinePhones } }).select('shippingAddress').lean()
+      : [];
+
+    const orderMap = {};
+    offlineOrders.forEach(o => { orderMap[o.shippingAddress.phone] = o; });
+
+    const now = new Date();
     const amcsWithExtras = amcs.map(amc => {
-      const now = new Date();
       const end = new Date(amc.endDate);
       const daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
+      const obj = { ...amc, servicesRemaining: amc.servicesTotal - amc.servicesUsed, daysRemaining };
 
-      return {
-        ...amc.toObject(),
-        servicesRemaining: amc.servicesTotal - amc.servicesUsed,
-        daysRemaining
-      };
+      if (!obj.userId && obj.customerPhone) {
+        const order = orderMap[obj.customerPhone];
+        if (order?.shippingAddress?.name) {
+          const parts = order.shippingAddress.name.split(' ');
+          obj.userId = {
+            firstName: parts[0],
+            lastName: parts.slice(1).join(' ') || '',
+            phone: obj.customerPhone,
+            email: order.shippingAddress.email || ''
+          };
+        } else {
+          obj.userId = { firstName: 'Offline', lastName: 'Customer', phone: obj.customerPhone };
+        }
+      }
+      return obj;
     });
 
     res.json({ amcs: amcsWithExtras });
@@ -85,10 +135,27 @@ export const getMyAmcs = async (req, res) => {
   try {
     const { status = 'Active', page = 1, limit = 10 } = req.query;
 
-    const filter = { userId: req.user.sub };
-    if (status && status !== 'all') {
-      filter.status = status;
+    // Also find AMCs linked by phone (for offline orders where userId was null at creation)
+    const user = await User.findById(req.user.sub).select('phone').lean();
+    const phoneConditions = [{ userId: req.user.sub }];
+    if (user?.phone) {
+      phoneConditions.push({ customerPhone: user.phone });
+      // Also match last 10 digits
+      const last10 = user.phone.replace(/\D/g, '').slice(-10);
+      if (last10.length === 10) phoneConditions.push({ customerPhone: { $regex: last10 + '$' } });
     }
+
+    const baseFilter = { $or: phoneConditions };
+    if (status && status !== 'all') baseFilter.status = status;
+
+    // Update userId on AMCs found by phone (link them to this user)
+    await UserAmc.updateMany(
+      { customerPhone: user?.phone, userId: null },
+      { $set: { userId: req.user.sub } }
+    );
+
+    const filter = { userId: req.user.sub };
+    if (status && status !== 'all') filter.status = status;
 
     const amcs = await UserAmc.find(filter)
       .populate('amcPlanId', 'name features color isPopular')
@@ -197,7 +264,7 @@ export const getAmcSummary = async (req, res) => {
       UserAmc.find({
         userId,
         status: 'Active',
-        endDate: { $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } // Next 30 days
+        endDate: { $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
       })
         .select('productName endDate')
         .sort({ endDate: 1 })
@@ -230,7 +297,7 @@ export const requestService = async (req, res) => {
 
     const amc = await UserAmc.findOne({
       _id: amcId,
-      userId: req.user.sub,
+      $or: [{ userId: req.user.sub }, { customerPhone: { $exists: true } }],
       status: 'Active'
     }).populate('userId');
 
@@ -248,15 +315,18 @@ export const requestService = async (req, res) => {
     const ticketId = `TKT-${String(count + 1).padStart(5, '0')}`;
 
     const user = amc.userId;
+    const userName = user ? `${user.firstName} ${user.lastName}` : (amc.customerPhone || 'Customer');
+    const userPhone = user?.phone || amc.customerPhone || '';
+    const userEmail = user?.email || '';
     const description = `AMC Service Request\nProduct: ${amc.productName}\nAMC ID: ${amc.amcId}\nNotes: ${notes || 'Service requested by customer'}`;
 
     await ServiceRequest.create({
       ticketId,
-      userId: user._id,
+      userId: user?._id || null,
       amcId: amc._id,
-      customerName: `${user.firstName} ${user.lastName}`,
-      customerPhone: user.phone,
-      customerEmail: user.email,
+      customerName: userName,
+      customerPhone: userPhone,
+      customerEmail: userEmail,
       type: 'AMC Service',
       description,
       priority: 'Medium',
@@ -294,49 +364,33 @@ export const requestService = async (req, res) => {
 // Get AMCs due for service (every 4 months)
 export const getDueAmcs = async (req, res) => {
   try {
-    const amcs = await UserAmc.find({ status: 'Active' })
-      .populate('userId', 'firstName lastName phone email addresses')
-      .populate('amcPlanId', 'name');
+    const [amcs, openAmcTickets] = await Promise.all([
+      UserAmc.find({ status: 'Active' })
+        .populate('userId', 'firstName lastName phone email addresses')
+        .populate('amcPlanId', 'name')
+        .lean(),
+      AssignedTicket.find({
+        amcId: { $exists: true },
+        status: { $in: ['Pending', 'In Progress'] }
+      }).select('amcId').lean()
+    ]);
 
-    // Get all open tickets related to AMCs to avoid duplicate "Due" records
-    const openAmcTickets = await AssignedTicket.find({
-      amcId: { $exists: true },
-      status: { $in: ['Pending', 'In Progress'] }
-    }).select('amcId');
-
-    const openAmcIds = openAmcTickets.map(t => t.amcId.toString());
-
+    const openAmcIds = new Set(openAmcTickets.map(t => t.amcId.toString()));
     const now = new Date();
-    const intervalMonths = 4;
+    const fifteenDaysLater = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
 
     const dueAmcs = amcs.filter(amc => {
-      // If already has an open ticket, not "Due" for a NEW one
-      if (openAmcIds.includes(amc._id.toString())) return false;
-
-      // If all services already used, not due
+      if (openAmcIds.has(amc._id.toString())) return false;
       if (amc.servicesUsed >= amc.servicesTotal) return false;
-
-      const startDate = new Date(amc.startDate);
-      const nextServiceNumber = amc.servicesUsed + 1;
-
-      // Calculate due date for next service
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(dueDate.getMonth() + (nextServiceNumber * intervalMonths));
-
-      // Within 15 days of due date or past due date
-      const fifteenDaysInMs = 15 * 24 * 60 * 60 * 1000;
-      return dueDate <= new Date(now.getTime() + fifteenDaysInMs);
+      const dueDate = amc.nextServiceDueDate
+        ? new Date(amc.nextServiceDueDate)
+        : (() => { const d = new Date(amc.startDate); d.setMonth(d.getMonth() + (amc.servicesUsed + 1) * 4); return d; })();
+      return dueDate <= fifteenDaysLater;
     }).map(amc => {
-      const startDate = new Date(amc.startDate);
-      const nextServiceNumber = amc.servicesUsed + 1;
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(dueDate.getMonth() + (nextServiceNumber * intervalMonths));
-
-      return {
-        ...amc.toObject(),
-        nextServiceDueDate: dueDate,
-        nextServiceNumber
-      };
+      const dueDate = amc.nextServiceDueDate
+        ? new Date(amc.nextServiceDueDate)
+        : (() => { const d = new Date(amc.startDate); d.setMonth(d.getMonth() + (amc.servicesUsed + 1) * 4); return d; })();
+      return { ...amc, nextServiceDueDate: dueDate, nextServiceNumber: amc.servicesUsed + 1 };
     });
 
     res.json({ amcs: dueAmcs });
@@ -480,11 +534,12 @@ export const createManualAmc = async (req, res) => {
       amcPlanPrice,
       durationMonths,
       servicesTotal,
-      startDate 
+      startDate,
+      customerPhone
     } = req.body;
 
-    if (!userId || !productId || !amcPlanId) {
-      return res.status(400).json({ message: "Missing required fields (userId, productId, amcPlanId)" });
+    if (!productId || !amcPlanId) {
+      return res.status(400).json({ message: "Missing required fields (productId, amcPlanId)" });
     }
 
     const start = startDate ? new Date(startDate) : new Date();
@@ -493,8 +548,9 @@ export const createManualAmc = async (req, res) => {
     end.setMonth(end.getMonth() + monthsToAdd);
 
     const newAmc = await UserAmc.create({
-      userId,
-      orderId: orderId || new mongoose.Types.ObjectId(),
+      userId: userId || null,
+      orderId: orderId || null,
+      customerPhone: customerPhone || null,
       productId,
       productType: productType || 'Product',
       productName,
@@ -502,7 +558,7 @@ export const createManualAmc = async (req, res) => {
       amcPlanId,
       amcPlanName,
       amcPlanPrice,
-      durationMonths: (durationMonths !== undefined && durationMonths !== null) ? parseInt(durationMonths) : 12,
+      durationMonths: monthsToAdd,
       startDate: start,
       endDate: end,
       servicesTotal: (servicesTotal !== undefined && servicesTotal !== null) ? parseInt(servicesTotal) : 4,

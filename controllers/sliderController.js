@@ -1,6 +1,9 @@
 // controllers/sliderController.js
+import fs from "fs";
 import Slider from "../models/Slider.js";
-import { cloudinary } from "../config/cloudinary.js";
+import { fileToUrl } from "../config/cloudinary.js";
+
+const deleteLocalFile = (p) => { if (p && fs.existsSync(p)) fs.unlinkSync(p); };
 
 export const createSlider = async (req, res) => {
   try {
@@ -19,9 +22,9 @@ export const createSlider = async (req, res) => {
 
     if (req.file) {
       if (req.file.mimetype.startsWith('video/')) {
-        sliderData.video = { url: req.file.path, publicId: req.file.filename };
+        sliderData.video = { url: fileToUrl(req.file), publicId: req.file.path };
       } else {
-        sliderData.image = { url: req.file.path, publicId: req.file.filename };
+        sliderData.image = { url: fileToUrl(req.file), publicId: req.file.path };
       }
     }
 
@@ -73,16 +76,12 @@ export const updateSlider = async (req, res) => {
 
     if (req.file) {
       if (req.file.mimetype.startsWith('video/')) {
-        if (slider.video?.publicId) {
-          await cloudinary.uploader.destroy(slider.video.publicId, { resource_type: 'video' }).catch(err => console.log("Del err:", err));
-        }
-        slider.video = { url: req.file.path, publicId: req.file.filename };
+        deleteLocalFile(slider.video?.publicId);
+        slider.video = { url: fileToUrl(req.file), publicId: req.file.path };
         slider.image = undefined;
       } else {
-        if (slider.image?.publicId) {
-          await cloudinary.uploader.destroy(slider.image.publicId).catch(err => console.log("Del err:", err));
-        }
-        slider.image = { url: req.file.path, publicId: req.file.filename };
+        deleteLocalFile(slider.image?.publicId);
+        slider.image = { url: fileToUrl(req.file), publicId: req.file.path };
         slider.video = undefined;
       }
     }
@@ -101,13 +100,8 @@ export const deleteSlider = async (req, res) => {
     const slider = await Slider.findById(id);
     if (!slider) return res.status(404).json({ message: "Slider not found" });
 
-    if (slider.image?.publicId) {
-      await cloudinary.uploader.destroy(slider.image.publicId).catch(err => console.log("Del err:", err));
-    }
-    if (slider.video?.publicId) {
-      await cloudinary.uploader.destroy(slider.video.publicId, { resource_type: 'video' }).catch(err => console.log("Del err:", err));
-    }
-
+    deleteLocalFile(slider.image?.publicId);
+    deleteLocalFile(slider.video?.publicId);
     await Slider.deleteOne({ _id: slider._id });
     res.json({ message: "Slider deleted" });
   } catch (err) {

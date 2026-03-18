@@ -2,6 +2,7 @@
 import Blog from "../models/Blog.js";
 import Admin from "../models/Admin.js";
 import BlogComment from "../models/BlogComment.js";
+import { fileToUrl } from "../config/cloudinary.js";
 
 // ADMIN FUNCTIONS
 
@@ -44,10 +45,10 @@ export const createBlog = async (req, res) => {
 
     if (req.files) {
       if (req.files.thumbnailImage && req.files.thumbnailImage[0]) {
-        finalThumbnail = req.files.thumbnailImage[0].path;
+        finalThumbnail = fileToUrl(req.files.thumbnailImage[0]);
       }
       if (req.files.coverImage && req.files.coverImage[0]) {
-        finalCover = req.files.coverImage[0].path;
+        finalCover = fileToUrl(req.files.coverImage[0]);
       }
     }
 
@@ -123,10 +124,10 @@ export const updateBlog = async (req, res) => {
     // Handle uploaded images
     if (req.files) {
       if (req.files.thumbnailImage && req.files.thumbnailImage[0]) {
-        updates.thumbnailImage = req.files.thumbnailImage[0].path;
+        updates.thumbnailImage = fileToUrl(req.files.thumbnailImage[0]);
       }
       if (req.files.coverImage && req.files.coverImage[0]) {
-        updates.coverImage = req.files.coverImage[0].path;
+        updates.coverImage = fileToUrl(req.files.coverImage[0]);
       }
     }
 

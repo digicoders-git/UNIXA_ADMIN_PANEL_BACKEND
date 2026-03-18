@@ -5,6 +5,7 @@ import Employee from "../models/Employee.js";
 import Lead from "../models/Lead.js";
 import UserAmc from "../models/UserAmc.js";
 import AssignedTicket from "../models/AssignedTicket.js";
+import Order from "../models/Order.js";
 
 // @desc    Get Manager Dashboard Stats
 // @route   GET /api/manager-dashboard/stats
@@ -59,7 +60,7 @@ export const getManagerDashboardStats = async (req, res) => {
       Lead.find().sort({ createdAt: -1 }).limit(3).select('name createdAt status source email'),
 
       // Fetch all AMCs for dynamic calculation
-      UserAmc.find().select('status startDate endDate servicesUsed servicesTotal')
+      UserAmc.find().select('status startDate endDate nextServiceDueDate servicesUsed servicesTotal')
     ]);
 
     // Prepare stats object
@@ -81,14 +82,20 @@ export const getManagerDashboardStats = async (req, res) => {
     });
 
     const dueAmcCount = allAmcsForStats.filter(amc => {
+      if (amc.status !== 'Active') return false;
       const isDateExpired = new Date(amc.endDate).getTime() < nowTime;
       const isServicesExhausted = (amc.servicesUsed || 0) >= (amc.servicesTotal || 4);
       if (isDateExpired || isServicesExhausted) return false;
 
-      const startDate = new Date(amc.startDate);
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(dueDate.getMonth() + ((amc.servicesUsed + 1) * 4));
-      return dueDate <= new Date(nowTime + (15 * 24 * 60 * 60 * 1000));
+      // Calculate mandatory 4-month due date
+      if (!amc.startDate) return false;
+      const interval = amc.serviceSchedule?.intervalMonths || 4;
+      const nextNum = (amc.servicesUsed || 0) + 1;
+      const dueDate = new Date(amc.startDate);
+      dueDate.setMonth(dueDate.getMonth() + (nextNum * interval));
+
+      const limit = new Date(nowTime + (15 * 24 * 60 * 60 * 1000));
+      return dueDate <= limit;
     }).length;
 
     // Prepare chart data structure
@@ -164,55 +171,93 @@ export const getManagerDashboardStats = async (req, res) => {
 export const getManagerUserAmcs = async (req, res) => {
   try {
     const amcs = await UserAmc.find()
-      .populate('userId', 'firstName lastName phone email')
+      .populate('userId', 'firstName lastName phone email address city state pincode addresses profilePicture createdAt')
       .populate('amcPlanId', 'name')
       .populate('productId', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
-    res.json({ amcs });
+    const offlinePhones = [...new Set(amcs.filter(a => !a.userId && a.customerPhone).map(a => a.customerPhone))];
+    const offlineOrders = offlinePhones.length > 0
+      ? await Order.find({ 'shippingAddress.phone': { $in: offlinePhones } }).select('shippingAddress').lean()
+      : [];
+    const orderMap = {};
+    offlineOrders.forEach(o => { orderMap[o.shippingAddress.phone] = o; });
+
+    const amcsWithUser = amcs.map(amc => {
+      if (!amc.userId && amc.customerPhone) {
+        const order = orderMap[amc.customerPhone];
+        amc.userId = {
+          firstName: order?.shippingAddress?.name || 'Offline',
+          lastName: order ? '' : 'Customer',
+          phone: amc.customerPhone,
+          email: order?.shippingAddress?.email || '',
+          address: order?.shippingAddress?.addressLine1 ? `${order.shippingAddress.addressLine1}, ${order.shippingAddress.city || ''}` : '',
+          createdAt: amc.createdAt
+        };
+      }
+      return amc;
+    });
+
+    res.json({ amcs: amcsWithUser });
   } catch (error) {
     console.error("Manager User AMCs Error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// @desc    Get AMCs Due for Service (every 4 months)
-// @route   GET /api/manager-dashboard/due-amcs
-// @access  Private (Manager)
 export const getManagerDueAmcs = async (req, res) => {
   try {
     const amcs = await UserAmc.find({ status: 'Active' })
-      .populate('userId', 'firstName lastName phone email')
-      .populate('amcPlanId', 'name');
+      .populate('userId', 'firstName lastName phone email address city state pincode addresses')
+      .populate('amcPlanId', 'name')
+      .lean();
 
     const now = new Date();
-    const intervalMonths = 4;
+    const limit = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
 
-    const dueAmcs = amcs.filter(amc => {
-      if (amc.servicesUsed >= amc.servicesTotal) return false;
-
-      const startDate = new Date(amc.startDate);
-      const nextServiceNumber = amc.servicesUsed + 1;
-
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(dueDate.getMonth() + (nextServiceNumber * intervalMonths));
-
-      const fifteenDaysInMs = 15 * 24 * 60 * 60 * 1000;
-      return dueDate <= new Date(now.getTime() + fifteenDaysInMs);
-    }).map(amc => {
-      const startDate = new Date(amc.startDate);
-      const nextServiceNumber = amc.servicesUsed + 1;
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(dueDate.getMonth() + (nextServiceNumber * intervalMonths));
-
-      return {
-        ...amc.toObject(),
-        nextServiceDueDate: dueDate,
-        nextServiceNumber
-      };
+    const filtered = amcs.filter(amc => {
+      if (!amc.startDate || amc.servicesUsed >= (amc.servicesTotal || 4)) return false;
+      const dueDate = amc.nextServiceDueDate
+        ? new Date(amc.nextServiceDueDate)
+        : (() => { const d = new Date(amc.startDate); d.setMonth(d.getMonth() + ((amc.servicesUsed || 0) + 1) * 4); return d; })();
+      return dueDate <= limit;
     });
 
-    res.json({ amcs: dueAmcs });
+    const offlinePhones = [...new Set(filtered.filter(a => !a.userId && a.customerPhone).map(a => a.customerPhone))];
+    const offlineOrders = offlinePhones.length > 0
+      ? await Order.find({ 'shippingAddress.phone': { $in: offlinePhones } }).select('shippingAddress').lean()
+      : [];
+    const orderMap = {};
+    offlineOrders.forEach(o => { orderMap[o.shippingAddress.phone] = o; });
+
+    const processedAmcs = filtered.map(amc => {
+      const dueDate = amc.nextServiceDueDate
+        ? new Date(amc.nextServiceDueDate)
+        : (() => { const d = new Date(amc.startDate); d.setMonth(d.getMonth() + ((amc.servicesUsed || 0) + 1) * 4); return d; })();
+
+      if (!amc.userId && amc.customerPhone) {
+        const order = orderMap[amc.customerPhone];
+        amc.userId = {
+          firstName: order?.shippingAddress?.name?.split(' ')[0] || 'Offline',
+          lastName: order?.shippingAddress?.name?.split(' ').slice(1).join(' ') || 'Customer',
+          phone: amc.customerPhone,
+          email: order?.shippingAddress?.email || '',
+          address: order?.shippingAddress?.addressLine1 || '',
+          isOffline: true
+        };
+      } else if (amc.userId && !amc.userId.address) {
+        const addr = amc.userId.addresses?.[0];
+        amc.userId.address = addr
+          ? `${addr.addressLine1 || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.pincode || ''}`.replace(/,\s*,/g, ',').trim()
+          : [amc.userId.city, amc.userId.state, amc.userId.pincode].filter(Boolean).join(', ');
+      }
+
+      return { ...amc, nextServiceDueDate: dueDate, nextServiceNumber: (amc.servicesUsed || 0) + 1 };
+    });
+
+    processedAmcs.sort((a, b) => new Date(a.nextServiceDueDate) - new Date(b.nextServiceDueDate));
+    res.json({ amcs: processedAmcs });
   } catch (err) {
     console.error("getManagerDueAmcs error:", err);
     res.status(500).json({ message: "Server error" });

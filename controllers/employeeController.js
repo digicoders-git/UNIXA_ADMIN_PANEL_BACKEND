@@ -72,7 +72,7 @@ export const getEmployees = async (req, res) => {
     }
     
     const employees = await Employee.find(query)
-      .select('name email phone role designation status employeeId joiningDate createdAt')
+      .select('name email phone role designation status employeeId joiningDate profilePicture createdAt')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 })
       .lean();
@@ -221,12 +221,14 @@ export const uploadEmployeeProfilePicture = async (req, res) => {
     }
 
     // Update employee with new profile picture URL
-    employee.profilePicture = req.file.path;
+    const normalized = req.file.path.replace(/\\/g, '/');
+    const idx = normalized.indexOf('uploads/');
+    employee.profilePicture = '/' + normalized.slice(idx);
     await employee.save();
 
     res.json({
       message: "Profile picture updated successfully",
-      profilePicture: req.file.path
+      profilePicture: employee.profilePicture
     });
   } catch (error) {
     console.error("Profile picture upload error:", error);

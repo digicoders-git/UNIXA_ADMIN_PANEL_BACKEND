@@ -1,7 +1,10 @@
+import fs from "fs";
 import Category from "../models/Category.js";
 import Product from "../models/Product.js";
-import { cloudinary } from "../config/cloudinary.js";
+import { fileToUrl } from "../config/cloudinary.js";
 import mongoose from "mongoose";
+
+const deleteLocalFile = (p) => { if (p && fs.existsSync(p)) fs.unlinkSync(p); };
 
 export const createCategory = async (req, res) => {
   try {
@@ -14,7 +17,7 @@ export const createCategory = async (req, res) => {
     const category = await Category.create({ 
       name, 
       description,
-      image: req.file ? { url: req.file.path, publicId: req.file.filename } : { url: "", publicId: "" }
+      image: req.file ? { url: fileToUrl(req.file), publicId: req.file.path } : { url: "", publicId: "" }
     });
     res.status(201).json({ message: "Category created", category });
   } catch (err) {
@@ -83,10 +86,8 @@ export const updateCategory = async (req, res) => {
     }
 
     if (req.file) {
-      if (category.image?.publicId) {
-        await cloudinary.uploader.destroy(category.image.publicId).catch(err => console.log("Cloudinary destroy error:", err));
-      }
-      category.image = { url: req.file.path, publicId: req.file.filename };
+      deleteLocalFile(category.image?.publicId);
+      category.image = { url: fileToUrl(req.file), publicId: req.file.path };
     }
 
 
@@ -123,11 +124,7 @@ export const deleteCategory = async (req, res) => {
         .json({ message: "Category has products, cannot delete" });
     }
 
-    if (category.image?.publicId) {
-      await cloudinary.uploader.destroy(category.image.publicId).catch(err => console.log("Cloudinary destroy error:", err));
-    }
-
-
+    deleteLocalFile(category.image?.publicId);
     await Category.deleteOne({ _id: category._id });
     res.json({ message: "Category deleted" });
   } catch (err) {

@@ -1,13 +1,16 @@
+import fs from "fs";
 import RentalPlan from "../models/RentalPlan.js";
-import { cloudinary } from "../config/cloudinary.js";
+import { fileToUrl } from "../config/cloudinary.js";
+
+const deleteLocalFile = (p) => { if (p && fs.existsSync(p)) fs.unlinkSync(p); };
 
 // Create Rental Plan
 export const createRentalPlan = async (req, res) => {
   try {
     const { planName, price, features, tag, installationCost, deposit, isActive, billingCycle, amcPlans, productId, description } = req.body;
 
-    if (!planName || !price) {
-      return res.status(400).json({ message: "planName and price are required" });
+    if (!planName) {
+      return res.status(400).json({ message: "planName is required" });
     }
 
     if (!req.file) {
@@ -28,17 +31,14 @@ export const createRentalPlan = async (req, res) => {
 
     const rentalPlan = await RentalPlan.create({
       planName,
-      price: Number(price),
+      price: Number(price) || 0,
       features: parsedFeatures,
       tag: tag || "",
       installationCost: installationCost || "Free",
       deposit: deposit || "None", 
       billingCycle: billingCycle || "Monthly",
       isActive: isActive === "false" ? false : true,
-      image: {
-        url: req.file.path,
-        publicId: req.file.filename,
-      },
+      image: { url: fileToUrl(req.file), publicId: req.file.path },
       amcPlans: typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans || [],
       productId: productId || null,
       description: description || "",
@@ -99,14 +99,8 @@ export const updateRentalPlan = async (req, res) => {
 
     // Handle Image Update
     if (req.file) {
-      // Delete old image
-      if (plan.image && plan.image.publicId) {
-        await cloudinary.uploader.destroy(plan.image.publicId);
-      }
-      plan.image = {
-        url: req.file.path,
-        publicId: req.file.filename,
-      };
+      deleteLocalFile(plan.image?.publicId);
+      plan.image = { url: fileToUrl(req.file), publicId: req.file.path };
     }
 
     if (planName) plan.planName = planName;
@@ -153,10 +147,7 @@ export const deleteRentalPlan = async (req, res) => {
     const plan = await RentalPlan.findById(req.params.id);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
 
-    if (plan.image && plan.image.publicId) {
-      await cloudinary.uploader.destroy(plan.image.publicId);
-    }
-
+    deleteLocalFile(plan.image?.publicId);
     await plan.deleteOne();
     res.status(200).json({ message: "Plan deleted" });
   } catch (error) {

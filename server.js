@@ -52,7 +52,15 @@ import assignedTicketRoutes from "./routes/assignedTicketRoutes.js";
 import leadRoutes from "./routes/leadRoutes.js";
 import amcJobsRoutes from "./routes/amcJobsRoutes.js";
 
+import { fileURLToPath } from "url";
+import path from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use(helmet());
 const allowedOrigins = [
@@ -68,6 +76,17 @@ const allowedOrigins = [
   "http://127.0.0.1:5173",
   "http://127.0.0.1:5174",
   "http://localhost:5180",
+  "http://localhost:5181",
+  "http://localhost:5182",
+  "http://localhost:5183",
+  "http://localhost:5185",
+  "http://localhost:5186",
+  "http://localhost:5187",
+  "http://localhost:5188",
+  "http://localhost:5189",
+  "http://localhost:5190",
+  "http://localhost:5186",
+  "http://localhost:5184",
   "https://Unixa-kappa.vercel.app",
   "https://unixa-admin-panel.vercel.app",
   "https://unixa-website.vercel.app",
