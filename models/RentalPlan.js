@@ -31,6 +31,24 @@ const rentalPlanSchema = new mongoose.Schema(
       type: String,
       default: "None",
     },
+    securityMoney: {
+      type: String,
+      default: "None",
+    },
+    discount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+    freeUses: {
+      type: [String],
+      default: [],
+    },
+    freeParts: {
+      type: [String],
+      default: [],
+    },
     billingCycle: {
       type: String,
       default: "Monthly",
@@ -50,6 +68,10 @@ const rentalPlanSchema = new mongoose.Schema(
       default: "",
     },
     isActive: {
+      type: Boolean,
+      default: true,
+    },
+    showOnWebsite: {
       type: Boolean,
       default: true,
     },

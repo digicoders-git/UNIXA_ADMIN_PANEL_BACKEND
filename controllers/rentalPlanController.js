@@ -7,7 +7,7 @@ const deleteLocalFile = (p) => { if (p && fs.existsSync(p)) fs.unlinkSync(p); };
 // Create Rental Plan
 export const createRentalPlan = async (req, res) => {
   try {
-    const { planName, price, features, tag, installationCost, deposit, isActive, billingCycle, amcPlans, productId, description } = req.body;
+    const { planName, price, features, tag, installationCost, deposit, securityMoney, discount, freeUses, freeParts, isActive, billingCycle, amcPlans, productId, description } = req.body;
 
     if (!planName) {
       return res.status(400).json({ message: "planName is required" });
@@ -17,25 +17,23 @@ export const createRentalPlan = async (req, res) => {
       return res.status(400).json({ message: "Image is required" });
     }
 
-    // Parse features if it's a string (from FormData)
-    let parsedFeatures = [];
-    if (typeof features === "string") {
-      try {
-        parsedFeatures = JSON.parse(features);
-      } catch (e) {
-        parsedFeatures = features.split(",").map(f => f.trim());
-      }
-    } else if (Array.isArray(features)) {
-      parsedFeatures = features;
-    }
+    const parseStringArray = (val) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      try { return JSON.parse(val); } catch { return val.split(",").map(f => f.trim()).filter(Boolean); }
+    };
 
     const rentalPlan = await RentalPlan.create({
       planName,
       price: Number(price) || 0,
-      features: parsedFeatures,
+      features: parseStringArray(features),
       tag: tag || "",
       installationCost: installationCost || "Free",
-      deposit: deposit || "None", 
+      deposit: deposit || "None",
+      securityMoney: securityMoney || "None",
+      discount: Number(discount) || 0,
+      freeUses: parseStringArray(freeUses),
+      freeParts: parseStringArray(freeParts),
       billingCycle: billingCycle || "Monthly",
       isActive: isActive === "false" ? false : true,
       image: { url: fileToUrl(req.file), publicId: req.file.path },
@@ -57,7 +55,7 @@ export const getRentalPlans = async (req, res) => {
     // Optionally filter by isActive if needed, but admin might want to see all
     // For now, return all sorted by price
     // Populate product and its category, and amcPlans
-    const plans = await RentalPlan.find()
+    const plans = await RentalPlan.find({ showOnWebsite: true })
       .populate({
         path: "productId",
         populate: { path: "category" }
@@ -92,10 +90,16 @@ export const getRentalPlan = async (req, res) => {
 export const updateRentalPlan = async (req, res) => {
   try {
     const { id } = req.params;
-    const { planName, price, features, tag, installationCost, deposit, isActive, billingCycle, amcPlans, productId, description } = req.body;
+    const { planName, price, features, tag, installationCost, deposit, securityMoney, discount, freeUses, freeParts, isActive, billingCycle, amcPlans, productId, description } = req.body;
 
     const plan = await RentalPlan.findById(id);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
+
+    const parseStringArray = (val) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      try { return JSON.parse(val); } catch { return val.split(",").map(f => f.trim()).filter(Boolean); }
+    };
 
     // Handle Image Update
     if (req.file) {
@@ -105,31 +109,20 @@ export const updateRentalPlan = async (req, res) => {
 
     if (planName) plan.planName = planName;
     if (price) plan.price = Number(price);
-    
-    if (features) {
-       if (typeof features === "string") {
-          try {
-            plan.features = JSON.parse(features);
-          } catch (e) {
-            plan.features = features.split(",").map(f => f.trim());
-          }
-        } else if (Array.isArray(features)) {
-          plan.features = features;
-        }
-    }
-
+    if (features) plan.features = parseStringArray(features);
     if (tag !== undefined) plan.tag = tag;
     if (installationCost !== undefined) plan.installationCost = installationCost;
     if (deposit !== undefined) plan.deposit = deposit;
+    if (securityMoney !== undefined) plan.securityMoney = securityMoney;
+    if (discount !== undefined) plan.discount = Number(discount) || 0;
+    if (freeUses !== undefined) plan.freeUses = parseStringArray(freeUses);
+    if (freeParts !== undefined) plan.freeParts = parseStringArray(freeParts);
     if (billingCycle !== undefined) plan.billingCycle = billingCycle;
     if (amcPlans !== undefined) {
-      try {
-        plan.amcPlans = typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans;
-      } catch (e) {
-        plan.amcPlans = amcPlans;
-      }
+      try { plan.amcPlans = typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans; } catch { plan.amcPlans = amcPlans; }
     }
     if (isActive !== undefined) plan.isActive = isActive === "true" || isActive === true;
+    if (req.body.showOnWebsite !== undefined) plan.showOnWebsite = req.body.showOnWebsite === "true" || req.body.showOnWebsite === true;
     if (productId !== undefined) plan.productId = productId || null;
     if (description !== undefined) plan.description = description;
 

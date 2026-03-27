@@ -140,7 +140,7 @@ export const createProduct = async (req, res) => {
 export const listProducts = async (req, res) => {
   try {
     const { all } = req.query;
-    const match = all === "true" ? {} : { isActive: true };
+    const match = all === "true" ? {} : { isActive: true, showOnWebsite: true };
     let products = await Product.aggregate([
       { $match: match },
       {
@@ -303,6 +303,8 @@ export const updateProduct = async (req, res) => {
 
     if (isActive !== undefined)
       product.isActive = isActive === true || isActive === "true";
+    if (req.body.showOnWebsite !== undefined)
+      product.showOnWebsite = req.body.showOnWebsite === true || req.body.showOnWebsite === "true";
 
     if (specifications !== undefined)
       product.specifications = parseMaybeJSON(

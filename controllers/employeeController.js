@@ -67,12 +67,12 @@ export const getEmployees = async (req, res) => {
   try {
     let query = {};
     
-    if (req.user && req.user.role === 'Manager') {
-      query = { createdBy: req.user.id };
+    if (req.admin?.role === 'Manager') {
+      query = { createdBy: req.admin.id };
     }
     
     const employees = await Employee.find(query)
-      .select('name email phone role designation status employeeId joiningDate profilePicture createdAt')
+      .select('name email phone role designation status employeeId joiningDate location workingArea address profilePicture createdAt')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 })
       .lean();
@@ -85,7 +85,7 @@ export const getEmployees = async (req, res) => {
 // Create new employee
 export const createEmployee = async (req, res) => {
   try {
-    const { name, email, phone, password, role, designation, address, joiningDate, location, workingArea, employeeId } = req.body;
+    const { name, email, phone, password, role, designation, address, joiningDate, location, workingArea } = req.body;
 
     const existingEmployee = await Employee.findOne({ email });
     if (existingEmployee) {
@@ -94,19 +94,27 @@ export const createEmployee = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Auto-generate employeeId
+    const prefix = role === 'Manager' ? 'MGR' : 'EMP';
+    const count = await Employee.countDocuments({ role: role || 'Employee' });
+    const autoEmployeeId = `${prefix}-${String(count + 1).padStart(3, '0')}`;
+
+    // Auto-set designation if not provided
+    const autoDesignation = designation || (role === 'Manager' ? 'Manager' : 'Field Technician');
+
     const newEmployee = new Employee({
       name,
       email,
       phone,
       password: hashedPassword,
-      role,
-      designation,
+      role: role || 'Employee',
+      designation: autoDesignation,
       address,
       joiningDate,
       location,
       workingArea,
-      employeeId,
-      createdBy: req.user && req.user.id ? req.user.id : null,
+      employeeId: autoEmployeeId,
+      createdBy: req.admin?.id || null,
     });
 
     await newEmployee.save();

@@ -5,11 +5,12 @@ import User from '../models/User.js';
 import ServiceRequest from '../models/ServiceRequest.js';
 import Order from '../models/Order.js';
 import Lead from '../models/Lead.js';
+import Complaint from '../models/Complaint.js';
 
 // Create ticket
 export const createTicket = async (req, res) => {
   try {
-    const { ticketType, title, assignedBy, assignedTo, leadId, orderId, serviceRequestId } = req.body;
+    const { ticketType, title, assignedBy, assignedTo, leadId, orderId, serviceRequestId, complaintId } = req.body;
 
 
 
@@ -41,6 +42,20 @@ export const createTicket = async (req, res) => {
     }
 
     const ticket = await AssignedTicket.create(req.body);
+
+    // If complaint ticket, update Complaint's assignedTechnician and status
+    if (ticketType === 'complaint' && complaintId) {
+      try {
+        const updated = await Complaint.findByIdAndUpdate(
+          complaintId,
+          { assignedTechnician: assignedTo, status: 'In Progress' },
+          { new: true }
+        );
+        console.log('[createTicket] Complaint updated:', updated?.complaintId, '→ technician:', assignedTo);
+      } catch (e) {
+        console.error('[createTicket] Failed to update complaint:', e.message);
+      }
+    }
 
     res.status(201).json({ message: 'Ticket assigned successfully', ticket });
   } catch (error) {
@@ -81,18 +96,50 @@ export const getTicketsByEmployee = async (req, res) => {
     const { employeeName } = req.params;
     const decodedEmployeeName = decodeURIComponent(employeeName).trim();
 
-
     const tickets = await AssignedTicket.find({ assignedTo: decodedEmployeeName })
-      .select('ticketType title assignedTo assignedBy priority dueDate status description customerName customerPhone customerEmail address createdAt notes visitType')
+      .select('ticketType title assignedTo assignedBy priority dueDate status description customerName customerPhone customerEmail address createdAt notes visitType userId complaintId')
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
 
+    // For tickets missing address, fetch from user or complaint
+    const enriched = await Promise.all(tickets.map(async (ticket) => {
+      if (ticket.address && ticket.address !== 'N/A') return ticket;
 
+      // Try userId
+      if (ticket.userId) {
+        const user = await User.findById(ticket.userId).select('addresses address city state pincode').lean();
+        if (user) {
+          if (user.addresses && user.addresses.length > 0) {
+            const primary = user.addresses.find(a => a.isDefault || a.isPrimary) || user.addresses[0];
+            const addr = [primary.addressLine1, primary.city, primary.state, primary.pincode].filter(Boolean).join(', ');
+            if (addr) return { ...ticket, address: addr };
+          } else if (user.address) {
+            const addr = [user.address, user.city, user.state, user.pincode].filter(Boolean).join(', ');
+            if (addr) return { ...ticket, address: addr };
+          }
+        }
+      }
 
-    res.json(tickets);
+      // Try complaintId
+      if (ticket.complaintId) {
+        const complaint = await Complaint.findById(ticket.complaintId).select('customerAddress userId').populate('userId', 'addresses address city state pincode').lean();
+        if (complaint) {
+          if (complaint.customerAddress) return { ...ticket, address: complaint.customerAddress };
+          const user = complaint.userId;
+          if (user && user.addresses && user.addresses.length > 0) {
+            const primary = user.addresses.find(a => a.isDefault || a.isPrimary) || user.addresses[0];
+            const addr = [primary.addressLine1, primary.city, primary.state, primary.pincode].filter(Boolean).join(', ');
+            if (addr) return { ...ticket, address: addr };
+          }
+        }
+      }
+
+      return ticket;
+    }));
+
+    res.json(enriched);
   } catch (error) {
-
     res.status(500).json({ message: 'Error fetching tickets', error: error.message });
   }
 };
@@ -101,12 +148,50 @@ export const getTicketsByEmployee = async (req, res) => {
 export const updateTicket = async (req, res) => {
   try {
     const { id } = req.params;
-    const ticket = await AssignedTicket.findByIdAndUpdate(id, req.body, { new: true })
-      .populate('userId', 'firstName lastName email phone addresses')
-      .populate('amcId')
-      .populate('serviceRequestId')
-      .populate('orderId')
-      .populate('leadId');
+
+    // Fetch ticket first to get linked IDs before update
+    const existingTicket = await AssignedTicket.findById(id).lean();
+    if (!existingTicket) return res.status(404).json({ message: 'Ticket not found' });
+
+    const ticket = await AssignedTicket.findByIdAndUpdate(id, req.body, { new: true });
+
+    // When employee starts job → sync status to all linked documents + notify user
+    if (req.body.status === 'In Progress') {
+      const UserNotification = (await import('../models/UserNotification.js')).default;
+      let userId = existingTicket.userId;
+
+      if (existingTicket.ticketType === 'complaint' && existingTicket.complaintId) {
+        const complaint = await Complaint.findByIdAndUpdate(
+          existingTicket.complaintId,
+          { status: 'In Progress' },
+          { new: true }
+        );
+        if (complaint?.userId) userId = complaint.userId;
+        console.log(`[updateTicket] Complaint ${existingTicket.complaintId} → In Progress`);
+      } else if (existingTicket.ticketType === 'service_request' && existingTicket.serviceRequestId) {
+        await ServiceRequest.findByIdAndUpdate(existingTicket.serviceRequestId, { status: 'In Progress' });
+        console.log(`[updateTicket] ServiceRequest ${existingTicket.serviceRequestId} → In Progress`);
+      } else if (existingTicket.ticketType === 'order' && existingTicket.orderId) {
+        await Order.findByIdAndUpdate(existingTicket.orderId, { status: 'processing' });
+        console.log(`[updateTicket] Order ${existingTicket.orderId} → processing`);
+      }
+
+      // Notify user
+      if (userId) {
+        try {
+          await UserNotification.create({
+            userId,
+            title: 'Technician On The Way 🔧',
+            message: `Your ${existingTicket.ticketType === 'complaint' ? 'complaint' : 'service request'} is now In Progress. Technician ${existingTicket.assignedTo} has started working on it.`,
+            type: 'Service',
+            refId: id
+          });
+        } catch (e) {
+          console.error('[updateTicket] Notification error:', e.message);
+        }
+      }
+    }
+
     res.json({ message: 'Ticket updated', ticket });
   } catch (error) {
     res.status(500).json({ message: 'Error updating ticket', error: error.message });
@@ -307,6 +392,33 @@ export const getAvailableServiceRequests = async (req, res) => {
   } catch (error) {
     console.error('Error in getAvailableServiceRequests:', error);
     res.status(500).json({ message: 'Error fetching available service requests', error: error.message });
+  }
+};
+
+// Get all tickets with employee live status (for manager live tracking)
+export const getLiveEmployeeStatus = async (req, res) => {
+  try {
+    const tickets = await AssignedTicket.find({
+      status: { $in: ['Pending', 'In Progress'] }
+    })
+      .select('assignedTo status title customerName address ticketType priority updatedAt')
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // Group by employee
+    const employeeMap = {};
+    tickets.forEach(ticket => {
+      if (!employeeMap[ticket.assignedTo]) {
+        employeeMap[ticket.assignedTo] = { activeJobs: [], inProgressCount: 0, pendingCount: 0 };
+      }
+      employeeMap[ticket.assignedTo].activeJobs.push(ticket);
+      if (ticket.status === 'In Progress') employeeMap[ticket.assignedTo].inProgressCount++;
+      else employeeMap[ticket.assignedTo].pendingCount++;
+    });
+
+    res.json(employeeMap);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching live status', error: error.message });
   }
 };
 

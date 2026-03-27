@@ -13,13 +13,15 @@ export const createRoPart = async (req, res) => {
   try {
     const {
       name,
+      brand,
       price,
       discountPercent,
       description,
       categoryId,
       isActive,
       p_id,
-      amcPlans,
+      warrantyYears,
+      stock,
     } = req.body;
 
     if (!name || !price || !categoryId || !p_id) {
@@ -40,12 +42,14 @@ export const createRoPart = async (req, res) => {
     const roPart = await RoPart.create({
       p_id,
       name,
+      brand: brand || "",
       category: category._id,
       price: Number(price),
       discountPercent: Math.max(0, Math.min(100, Number(discountPercent || 0))),
       mainImage: { url: fileToUrl(req.file), publicId: req.file.path },
       description,
-      amcPlans: typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans || [],
+      warrantyYears: Number(warrantyYears || 0),
+      stock: Number(stock || 0),
       isActive: isActive === "false" ? false : true,
     });
 
@@ -61,11 +65,10 @@ export const createRoPart = async (req, res) => {
 export const listRoParts = async (req, res) => {
   try {
     const { all } = req.query;
-    const match = all === "true" ? {} : { isActive: true };
+    const match = all === "true" ? {} : { isActive: true, showOnWebsite: true };
     
     const roParts = await RoPart.find(match)
       .populate("category", "name slug")
-      .populate("amcPlans")
       .sort({ createdAt: -1 });
 
     res.json({ roParts });
@@ -80,10 +83,10 @@ export const listRoParts = async (req, res) => {
 export const getRoPart = async (req, res) => {
   try {
     const { id } = req.params;
-    let roPart = await RoPart.findOne({ p_id: id }).populate("category", "name slug").populate("amcPlans");
+    let roPart = await RoPart.findOne({ p_id: id }).populate("category", "name slug");
 
     if (!roPart && mongoose.Types.ObjectId.isValid(id)) {
-      roPart = await RoPart.findById(id).populate("category", "name slug").populate("amcPlans");
+      roPart = await RoPart.findById(id).populate("category", "name slug");
     }
 
     if (!roPart) {
@@ -113,17 +116,22 @@ export const updateRoPart = async (req, res) => {
 
     const {
       name,
+      brand,
       price,
       discountPercent,
       description,
       categoryId,
       isActive,
       p_id,
-      amcPlans,
+      warrantyYears,
+      stock,
     } = req.body;
 
     if (p_id) roPart.p_id = p_id;
     if (name) roPart.name = name;
+    if (brand !== undefined) roPart.brand = brand;
+    if (warrantyYears !== undefined) roPart.warrantyYears = Number(warrantyYears);
+    if (stock !== undefined) roPart.stock = Number(stock);
     if (price !== undefined) roPart.price = Number(price);
     if (discountPercent !== undefined)
       roPart.discountPercent = Math.max(0, Math.min(100, Number(discountPercent)));
@@ -136,17 +144,11 @@ export const updateRoPart = async (req, res) => {
     }
 
     if (description !== undefined) roPart.description = description;
-    
-    if (amcPlans !== undefined) {
-      try {
-        roPart.amcPlans = typeof amcPlans === "string" ? JSON.parse(amcPlans) : amcPlans;
-      } catch (e) {
-        roPart.amcPlans = amcPlans;
-      }
-    }
 
     if (isActive !== undefined)
       roPart.isActive = isActive === true || isActive === "true";
+    if (req.body.showOnWebsite !== undefined)
+      roPart.showOnWebsite = req.body.showOnWebsite === true || req.body.showOnWebsite === "true";
 
     if (req.file) {
       deleteLocalFile(roPart.mainImage?.publicId);

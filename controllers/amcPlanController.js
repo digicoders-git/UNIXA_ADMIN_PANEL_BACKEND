@@ -1,99 +1,99 @@
 import AmcPlan from "../models/AmcPlan.js";
 
-// Create a new Plan
+const parseFeatures = (f) => Array.isArray(f) ? f : (f || "").split(",").map(x => x.trim()).filter(Boolean);
+
 export const createPlan = async (req, res) => {
   try {
-    const { name, amcType, price, durationMonths, features, color, isPopular, isActive, servicesIncluded, partsIncluded } = req.body;
-
-    const newPlan = new AmcPlan({
-      name,
-      amcType,
-      price,
-      durationMonths,
-      features,
-      color,
-      isPopular,
-      isActive,
-      servicesIncluded,
-      partsIncluded
+    const { name, amcType, servicesIncluded, features, color, isPopular, isActive, partsIncluded, productConfigs } = req.body;
+    const configs = (productConfigs || []).map(c => ({
+      productId: c.productId,
+      rateOneYear: Number(c.rateOneYear) || 0,
+      rateTwoYear: Number(c.rateTwoYear) || 0,
+      rateThreeYear: Number(c.rateThreeYear) || 0,
+      discount: Number(c.discount) || 0,
+      serviceSchedule: { type: c.serviceSchedule?.type || "Half Yearly", intervalMonths: c.serviceSchedule?.type === "Quarterly" ? 3 : 6 },
+    }));
+    const plan = await AmcPlan.create({
+      name, amcType, servicesIncluded, partsIncluded,
+      price: configs[0]?.rateOneYear || 0,
+      features: parseFeatures(features),
+      color: color || "blue",
+      isPopular: !!isPopular,
+      isActive: isActive !== false,
+      productConfigs: configs,
+      productIds: configs.map(c => c.productId),
     });
-
-    await newPlan.save();
-    res.status(201).json({ success: true, plan: newPlan });
-  } catch (error) {
-    res.status(500).json({ message: "Error creating plan", error: error.message });
+    res.status(201).json({ success: true, plan });
+  } catch (err) {
+    res.status(500).json({ message: "Error creating plan", error: err.message });
   }
 };
 
-// Get All Plans (Public/Admin)
 export const getPlans = async (req, res) => {
   try {
-    const { activeOnly } = req.query;
-    const query = {};
-    if (activeOnly === 'true') query.isActive = true;
-
-    const plans = await AmcPlan.find(query).sort({ price: 1 });
+    const query = req.query.activeOnly === "true" ? { isActive: true } : {};
+    const plans = await AmcPlan.find(query)
+      .populate("productConfigs.productId", "name price mainImage")
+      .populate("productIds", "name price")
+      .sort({ createdAt: -1 });
     res.status(200).json({ success: true, plans });
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching plans", error: error.message });
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching plans", error: err.message });
   }
 };
 
-// Update Plan
 export const updatePlan = async (req, res) => {
   try {
-    const { id } = req.params;
-    const plan = await AmcPlan.findByIdAndUpdate(id, req.body, { new: true });
-
+    const { productConfigs, features, ...rest } = req.body;
+    const update = { ...rest };
+    if (features) update.features = parseFeatures(features);
+    if (productConfigs) {
+      update.productConfigs = productConfigs.map(c => ({
+        productId: c.productId,
+        rateOneYear: Number(c.rateOneYear) || 0,
+        rateTwoYear: Number(c.rateTwoYear) || 0,
+        rateThreeYear: Number(c.rateThreeYear) || 0,
+        discount: Number(c.discount) || 0,
+        serviceSchedule: { type: c.serviceSchedule?.type || "Half Yearly", intervalMonths: c.serviceSchedule?.type === "Quarterly" ? 3 : 6 },
+      }));
+      update.productIds = update.productConfigs.map(c => c.productId);
+      update.price = update.productConfigs[0]?.rateOneYear || 0;
+    }
+    const plan = await AmcPlan.findByIdAndUpdate(req.params.id, update, { new: true })
+      .populate("productConfigs.productId", "name price mainImage");
     if (!plan) return res.status(404).json({ message: "Plan not found" });
-
     res.status(200).json({ success: true, plan });
-  } catch (error) {
-    res.status(500).json({ message: "Error updating plan", error: error.message });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating plan", error: err.message });
   }
 };
 
-// Delete Plan
 export const deletePlan = async (req, res) => {
   try {
-    const { id } = req.params;
-    await AmcPlan.findByIdAndDelete(id);
-    res.status(200).json({ success: true, message: "Plan deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ message: "Error deleting plan", error: error.message });
+    await AmcPlan.findByIdAndDelete(req.params.id);
+    res.status(200).json({ success: true, message: "Plan deleted" });
+  } catch (err) {
+    res.status(500).json({ message: "Error deleting plan", error: err.message });
   }
 };
 
-// Assign Products to AMC Plan
+// legacy — kept for backward compat
 export const assignProducts = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { productIds } = req.body;
-
-    const plan = await AmcPlan.findByIdAndUpdate(
-      id,
-      { productIds },
-      { new: true }
-    );
-
+    const plan = await AmcPlan.findByIdAndUpdate(req.params.id, { productIds: req.body.productIds }, { new: true });
     if (!plan) return res.status(404).json({ message: "Plan not found" });
-
     res.status(200).json({ success: true, plan });
-  } catch (error) {
-    res.status(500).json({ message: "Error assigning products", error: error.message });
+  } catch (err) {
+    res.status(500).json({ message: "Error", error: err.message });
   }
 };
 
-// Get Products assigned to AMC Plan
 export const getAmcProducts = async (req, res) => {
   try {
-    const { id } = req.params;
-    const plan = await AmcPlan.findById(id).populate("productIds");
-
+    const plan = await AmcPlan.findById(req.params.id).populate("productIds");
     if (!plan) return res.status(404).json({ message: "Plan not found" });
-
     res.status(200).json({ success: true, productIds: plan.productIds });
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching products", error: error.message });
+  } catch (err) {
+    res.status(500).json({ message: "Error", error: err.message });
   }
 };

@@ -4,12 +4,13 @@ const assignedTicketSchema = new mongoose.Schema({
   ticketType: {
     type: String,
     enum: {
-      values: ["service_request", "order", "lead"],
+      values: ["service_request", "order", "lead", "complaint"],
       message: '{VALUE} is not a valid ticket type'
     },
     required: true
   },
   serviceRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'ServiceRequest' },
+  complaintId: { type: mongoose.Schema.Types.ObjectId, ref: 'Complaint' },
   orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
   leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
   title: { type: String, required: true },

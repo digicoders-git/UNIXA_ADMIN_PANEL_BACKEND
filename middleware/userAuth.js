@@ -13,7 +13,6 @@ export const authenticateUser = async (req, res, next) => {
     const decoded = jwt.verify(token, secret);
     const user = await User.findOne({ 
       _id: decoded.sub, 
-      email: decoded.email,
       isActive: true 
     }).select("+tokenVersion");
 

@@ -37,6 +37,12 @@ const serviceRequestSchema = new mongoose.Schema({
     enum: ["Open", "In Progress", "Resolved", "Cancelled"],
     default: "Open"
   },
+  relatedItemType: {
+    type: String,
+    enum: ["Order", "Rental", "AMC", "General"]
+  },
+  relatedItemId: String,
+  relatedItemName: String,
   assignedTechnician: String,
   resolutionNotes: String,
   completionRemark: String,

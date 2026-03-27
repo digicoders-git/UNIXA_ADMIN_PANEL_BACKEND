@@ -44,6 +44,8 @@ import rentalPlanRoutes from "./routes/rentalPlanRoutes.js";
 import userDashboardRoutes from "./routes/userDashboardRoutes.js";
 import userRentalRoutes from "./routes/userRentalRoutes.js";
 import userServiceRequestRoutes from "./routes/userServiceRequestRoutes.js";
+import userComplaintRoutes from "./routes/userComplaintRoutes.js";
+import adminComplaintRoutes from "./routes/adminComplaintRoutes.js";
 import adminServiceRequestRoutes from "./routes/adminServiceRequestRoutes.js";
 import userAmcRoutes from "./routes/userAmcRoutes.js";
 import employeeDashboardRoutes from "./routes/employeeDashboardRoutes.js";
@@ -51,6 +53,9 @@ import managerDashboardRoutes from "./routes/managerDashboardRoutes.js";
 import assignedTicketRoutes from "./routes/assignedTicketRoutes.js";
 import leadRoutes from "./routes/leadRoutes.js";
 import amcJobsRoutes from "./routes/amcJobsRoutes.js";
+import brandRoutes from "./routes/brandRoutes.js";
+import rentalTrackingRoutes from "./routes/rentalTrackingRoutes.js";
+import amcEnquiryRoutes from "./routes/amcEnquiryRoutes.js";
 
 import { fileURLToPath } from "url";
 import path from "path";
@@ -185,6 +190,8 @@ app.use("/api/rental-plans", rentalPlanRoutes);
 app.use("/api/user-dashboard", userDashboardRoutes);
 app.use("/api/user-rentals", userRentalRoutes);
 app.use("/api/service-requests", userServiceRequestRoutes);
+app.use("/api/complaints", userComplaintRoutes);
+app.use("/api/admin/complaints", adminComplaintRoutes);
 app.use("/api/admin/service-requests", adminServiceRequestRoutes);
 app.use("/api/my-amcs", userAmcRoutes);
 app.use("/api/employee-dashboard", employeeDashboardRoutes);
@@ -192,6 +199,9 @@ app.use("/api/manager-dashboard", managerDashboardRoutes);
 app.use("/api/assigned-tickets", assignedTicketRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/amc-jobs", amcJobsRoutes);
+app.use("/api/brands", brandRoutes);
+app.use("/api/rental-tracking", rentalTrackingRoutes);
+app.use("/api/amc-enquiries", amcEnquiryRoutes);
 
 
 

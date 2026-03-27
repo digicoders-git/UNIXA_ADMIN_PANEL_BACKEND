@@ -3,7 +3,7 @@ import AssignedTicket from "../models/AssignedTicket.js";
 
 export const createLead = async (req, res) => {
   try {
-    const { name, email, phone, address, productInterest, leadStatus, notes, followUpDate, source } = req.body;
+    const { name, email, phone, address, productInterest, selectedItem, leadStatus, notes, followUpDate, source } = req.body;
     let { createdBy } = req.body;
 
     if (!name || !phone) {
@@ -21,6 +21,7 @@ export const createLead = async (req, res) => {
       phone,
       address,
       productInterest,
+      selectedItem: selectedItem || null,
       leadStatus: leadStatus || 'Warm',
       notes,
       followUpDate,
@@ -39,7 +40,12 @@ export const createLead = async (req, res) => {
 
 export const listLeads = async (req, res) => {
   try {
-    const leads = await Lead.find({}).populate('assignedTo', 'name email').sort({ createdAt: -1 });
+    const filter = {};
+    // Employee sirf apne leads dekhe
+    if (req.user && req.user.role === 'Employee') {
+      filter.createdBy = req.user.name;
+    }
+    const leads = await Lead.find(filter).populate('assignedTo', 'name email').sort({ createdAt: -1 });
     res.json({ leads });
   } catch (err) {
     console.error("listLeads error:", err);
@@ -93,6 +99,48 @@ export const updateLead = async (req, res) => {
     res.json({ message: "Lead updated successfully", lead });
   } catch (err) {
     console.error("updateLead error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const verifyLead = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lead = await Lead.findById(id);
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    lead.verified = !lead.verified;
+    await lead.save();
+    res.json({ message: `Lead ${lead.verified ? 'verified' : 'unverified'} successfully`, lead });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const scheduleService = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { scheduledDate, scheduleNote } = req.body;
+    if (!scheduledDate) return res.status(400).json({ message: "Scheduled date is required" });
+    const lead = await Lead.findById(id);
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    lead.serviceSchedule = { scheduledDate, scheduleStatus: "Upcoming", scheduleNote: scheduleNote || "" };
+    await lead.save();
+    res.json({ message: "Service scheduled successfully", lead });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const updateScheduleStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { scheduleStatus } = req.body;
+    const lead = await Lead.findById(id);
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    lead.serviceSchedule.scheduleStatus = scheduleStatus;
+    await lead.save();
+    res.json({ message: "Schedule status updated", lead });
+  } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 };

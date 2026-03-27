@@ -11,8 +11,9 @@ const imageSchema = new mongoose.Schema(
 
 const roPartSchema = new mongoose.Schema(
   {
+    p_id: { type: String, unique: true, sparse: true, index: true, trim: true },
     name: { type: String, required: true, trim: true },
-    p_id: { type: String, unique: true, index: true, trim: true },
+    brand: { type: String, default: "", trim: true },
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
@@ -23,13 +24,10 @@ const roPartSchema = new mongoose.Schema(
     finalPrice: { type: Number, default: 0 },
     mainImage: { type: imageSchema, required: true },
     description: { type: String, default: "" },
-    amcPlans: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "AmcPlan",
-      },
-    ],
+    warrantyYears: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
+    showOnWebsite: { type: Boolean, default: true },
+    stock: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );

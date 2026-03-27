@@ -13,12 +13,15 @@ import { uploadProfilePicture } from "../config/cloudinary.js";
 
 const router = express.Router();
 
+import { authenticateAdmin } from "../middleware/adminAuth.js";
+import { requireAuth } from "../middleware/auth.js";
+
 router.post("/login", loginEmployee);
-router.get("/", getEmployees);
+router.get("/", requireAuth, getEmployees);
 router.get("/:id/stats", getEmployeeStats);
-router.post("/", createEmployee);
-router.put("/:id", updateEmployee);
-router.put("/:id/profile-picture", uploadProfilePicture, uploadEmployeeProfilePicture);
-router.delete("/:id", deleteEmployee);
+router.post("/", authenticateAdmin, createEmployee);
+router.put("/:id", authenticateAdmin, updateEmployee);
+router.put("/:id/profile-picture", authenticateAdmin, uploadProfilePicture, uploadEmployeeProfilePicture);
+router.delete("/:id", authenticateAdmin, deleteEmployee);
 
 export default router;

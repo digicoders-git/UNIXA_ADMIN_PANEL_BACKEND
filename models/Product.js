@@ -22,6 +22,8 @@ const specificationSchema = new mongoose.Schema(
   {
     brand: { type: String, default: "", trim: true },
     warranty: { type: String, default: "", trim: true },
+    warrantyYears: { type: Number, default: 0 },
+    mandatoryServices: { type: Number, default: 0 },
     weight: { type: String, default: "", trim: true },
     frameType: { type: String, default: "", trim: true },
     material: { type: String, default: "", trim: true },
@@ -80,6 +82,7 @@ const productSchema = new mongoose.Schema(
     ],
 
     isActive: { type: Boolean, default: true },
+    showOnWebsite: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

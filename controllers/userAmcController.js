@@ -135,26 +135,25 @@ export const getMyAmcs = async (req, res) => {
   try {
     const { status = 'Active', page = 1, limit = 10 } = req.query;
 
-    // Also find AMCs linked by phone (for offline orders where userId was null at creation)
     const user = await User.findById(req.user.sub).select('phone').lean();
-    const phoneConditions = [{ userId: req.user.sub }];
-    if (user?.phone) {
-      phoneConditions.push({ customerPhone: user.phone });
-      // Also match last 10 digits
-      const last10 = user.phone.replace(/\D/g, '').slice(-10);
-      if (last10.length === 10) phoneConditions.push({ customerPhone: { $regex: last10 + '$' } });
+    const last10 = user?.phone?.replace(/\D/g, '').slice(-10);
+
+    // Build $or conditions: userId OR phone
+    const orConditions = [{ userId: req.user.sub }];
+    if (last10) {
+      orConditions.push({ customerPhone: user.phone });
+      orConditions.push({ customerPhone: { $regex: last10 + '$' } });
     }
 
-    const baseFilter = { $or: phoneConditions };
-    if (status && status !== 'all') baseFilter.status = status;
+    // Link phone-matched AMCs to this userId (one-time fix)
+    if (last10) {
+      await UserAmc.updateMany(
+        { $or: [{ customerPhone: user.phone }, { customerPhone: { $regex: last10 + '$' } }], userId: null },
+        { $set: { userId: req.user.sub } }
+      );
+    }
 
-    // Update userId on AMCs found by phone (link them to this user)
-    await UserAmc.updateMany(
-      { customerPhone: user?.phone, userId: null },
-      { $set: { userId: req.user.sub } }
-    );
-
-    const filter = { userId: req.user.sub };
+    const filter = { $or: orConditions };
     if (status && status !== 'all') filter.status = status;
 
     const amcs = await UserAmc.find(filter)
@@ -167,39 +166,25 @@ export const getMyAmcs = async (req, res) => {
 
     const total = await UserAmc.countDocuments(filter);
 
-    // Add computed fields
     const amcsWithExtras = amcs.map(amc => {
       const amcObj = amc.toObject({ virtuals: true });
-
       const now = new Date();
       const end = new Date(amc.endDate);
-      const daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
-
       const start = new Date(amc.startDate);
+      const daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
       const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
       const daysPassed = Math.ceil((now - start) / (1000 * 60 * 60 * 24));
       const progressPercent = Math.min(100, Math.max(0, (daysPassed / totalDays) * 100));
-
-      return {
-        ...amcObj,
-        daysRemaining,
-        progressPercent: Math.round(progressPercent),
-        servicesRemaining: amc.servicesTotal - amc.servicesUsed
-      };
+      return { ...amcObj, daysRemaining, progressPercent: Math.round(progressPercent), servicesRemaining: amc.servicesTotal - amc.servicesUsed };
     });
 
     res.json({
       amcs: amcsWithExtras,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
-      }
+      pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / limit) }
     });
   } catch (err) {
-    console.error("getMyAmcs error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error('getMyAmcs error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -253,22 +238,26 @@ export const getAmcDetails = async (req, res) => {
 export const getAmcSummary = async (req, res) => {
   try {
     const userId = req.user.sub;
+    const user = await User.findById(userId).select('phone').lean();
+    const last10 = user?.phone?.replace(/\D/g, '').slice(-10);
+
+    const orConditions = [
+      { userId: new mongoose.Types.ObjectId(userId) },
+      ...(last10 ? [{ customerPhone: { $regex: last10 + '$' } }] : [])
+    ];
 
     const [activeCount, expiredCount, totalServices, upcomingExpiry] = await Promise.all([
-      UserAmc.countDocuments({ userId, status: 'Active' }),
-      UserAmc.countDocuments({ userId, status: 'Expired' }),
+      UserAmc.countDocuments({ $or: orConditions, status: 'Active' }),
+      UserAmc.countDocuments({ $or: orConditions, status: 'Expired' }),
       UserAmc.aggregate([
-        { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+        { $match: { $or: orConditions } },
         { $group: { _id: null, total: { $sum: '$servicesUsed' } } }
       ]),
       UserAmc.find({
-        userId,
+        $or: orConditions,
         status: 'Active',
         endDate: { $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
-      })
-        .select('productName endDate')
-        .sort({ endDate: 1 })
-        .limit(5)
+      }).select('productName endDate').sort({ endDate: 1 }).limit(5)
     ]);
 
     res.json({
@@ -284,8 +273,8 @@ export const getAmcSummary = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error("getAmcSummary error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error('getAmcSummary error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -590,52 +579,81 @@ export const getEligibleProducts = async (req, res) => {
   try {
     const userId = req.user.sub;
 
-    // 1. Get all delivered orders for this user
-    const orders = await Order.find({ 
-      userId, 
-      status: 'delivered',
-      source: { $ne: 'offline' }
-    }).populate('items.product');
+    // Get user's phone for matching guest orders
+    const user = await User.findById(userId).select('phone').lean();
+    const last10 = user?.phone?.replace(/\D/g, '').slice(-10);
 
-    // 2. Extract unique products from these orders
+    // Build order query — match by userId OR phone
+    const orderQuery = {
+      status: { $in: ['delivered', 'installed'] },
+      $or: [{ userId }]
+    };
+    if (last10) {
+      orderQuery.$or.push({ 'shippingAddress.phone': user.phone });
+      orderQuery.$or.push({ 'shippingAddress.phone': { $regex: last10 + '$' } });
+    }
+
+    const orders = await Order.find(orderQuery).populate('items.product').lean();
+
+    // Extract unique products
     const productsMap = new Map();
-    
     for (const order of orders) {
       for (const item of order.items) {
         if (!item.product) continue;
-        
         const key = item.product._id.toString();
         if (!productsMap.has(key)) {
           productsMap.set(key, {
             _id: item.product._id,
-            name: item.product.name,
-            image: item.product.mainImage?.url || item.product.img || "",
+            name: item.product.name || item.productName,
+            image: item.product.mainImage?.url || item.product.img || '',
             orderId: order._id,
             purchaseDate: order.createdAt,
+            deliveredAt: order.deliveredAt,
+            address: order.shippingAddress,
             productType: item.productType || 'Product'
           });
         }
       }
     }
 
-    // 3. Get existing active AMCs to mark which products already have coverage
-    const activeAmcs = await UserAmc.find({ 
-      userId, 
-      status: 'Active' 
-    });
+    // Also include products from productName in orders (when product ref is missing)
+    for (const order of orders) {
+      for (const item of order.items) {
+        if (item.product) continue; // already handled
+        if (!item.productName) continue;
+        const key = item.productName;
+        if (!productsMap.has(key)) {
+          productsMap.set(key, {
+            _id: item.product || null,
+            name: item.productName,
+            image: item.productImage || '',
+            orderId: order._id,
+            purchaseDate: order.createdAt,
+            deliveredAt: order.deliveredAt,
+            address: order.shippingAddress,
+            productType: item.productType || 'Product'
+          });
+        }
+      }
+    }
+
+    // Mark which products already have active AMC
+    const activeAmcs = await UserAmc.find({
+      $or: [{ userId }, ...(last10 ? [{ customerPhone: { $regex: last10 + '$' } }] : [])],
+      status: 'Active'
+    }).lean();
 
     const products = Array.from(productsMap.values()).map(product => {
-      const existingAmc = activeAmcs.find(amc => amc.productId.toString() === product._id.toString());
-      return {
-        ...product,
-        hasActiveAmc: !!existingAmc,
-        amcId: existingAmc?._id || null
-      };
+      const existingAmc = activeAmcs.find(amc =>
+        amc.productId?.toString() === product._id?.toString() ||
+        amc.productName === product.name
+      );
+      return { ...product, hasActiveAmc: !!existingAmc, amcId: existingAmc?._id || null };
     });
 
     res.json({ products });
   } catch (err) {
-    console.error("getEligibleProducts error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error('getEligibleProducts error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 };

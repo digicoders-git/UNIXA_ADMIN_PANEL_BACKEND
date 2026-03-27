@@ -180,6 +180,19 @@ export const getCustomerCompleteHistory = async (req, res) => {
         source: amc.source
       }));
 
+    // Build address — prefer Customer model address, fallback to latest order shippingAddress
+    let resolvedAddress = customer.address || {};
+    const isAddressEmpty = !resolvedAddress.house && !resolvedAddress.area && !resolvedAddress.city && !resolvedAddress.pincode;
+    if (isAddressEmpty && orders.length > 0) {
+      const latestOrder = orders[0];
+      resolvedAddress = {
+        house: latestOrder.shippingAddress?.addressLine1 || '',
+        area: latestOrder.shippingAddress?.addressLine2 || '',
+        city: latestOrder.shippingAddress?.city || '',
+        pincode: latestOrder.shippingAddress?.pincode || '',
+      };
+    }
+
     res.json({
       customer: {
         _id: customer._id,
@@ -187,7 +200,7 @@ export const getCustomerCompleteHistory = async (req, res) => {
         name: customer.name,
         mobile: customer.mobile,
         email: customer.email || "N/A",
-        address: customer.address
+        address: resolvedAddress
       },
       orders: formattedOrders,
       amcs: formattedAmcs

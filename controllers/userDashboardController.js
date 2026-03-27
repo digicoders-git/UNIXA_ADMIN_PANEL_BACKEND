@@ -38,40 +38,41 @@ export const getUserDashboardStats = async (req, res) => {
   try {
     const userId = req.user.sub;
     
-    // 1. Fetch User & Linked Customer
     const linkedData = await findLinkedCustomer(userId);
     if (!linkedData || !linkedData.user) return res.status(404).json({ message: "User not found" });
-    
     const { user, customer } = linkedData;
 
-    // 2. Fetch Orders Stats
-    // Ensure userId is ObjectId for Order queries
     const userObjectId = new mongoose.Types.ObjectId(userId);
-    
-    const totalOrders = await Order.countDocuments({ userId: userObjectId });
-    
+    const last10 = user.phone?.replace(/\D/g, '').slice(-10);
+
+    // Build order match — userId OR phone
+    const orderMatch = {
+      $or: [
+        { userId: userObjectId },
+        ...(last10 ? [
+          { 'shippingAddress.phone': user.phone },
+          { 'shippingAddress.phone': { $regex: last10 + '$' } }
+        ] : [])
+      ]
+    };
+
+    const totalOrders = await Order.countDocuments(orderMatch);
     const activeOrdersCount = await Order.countDocuments({
-      userId: userObjectId,
-      status: { $nin: ["delivered", "cancelled", "returned"] }
+      ...orderMatch,
+      $or: orderMatch.$or,
+      status: { $nin: ['delivered', 'cancelled', 'returned'] }
     });
 
-    // Aggregate total spent (excluding cancelled/returned)
     const spentAgg = await Order.aggregate([
-      { 
-        $match: { 
-          userId: userObjectId, 
-          status: { $nin: ["cancelled", "returned", "failed"] } 
-        } 
-      },
-      { $group: { _id: null, total: { $sum: "$total" } } }
+      { $match: { ...orderMatch, status: { $nin: ['cancelled', 'returned', 'failed'] } } },
+      { $group: { _id: null, total: { $sum: '$total' } } }
     ]);
     const totalSpent = spentAgg[0]?.total || 0;
 
-    // 3. Recent Orders
-    const recentOrders = await Order.find({ userId: userObjectId })
+    const recentOrders = await Order.find(orderMatch)
       .sort({ createdAt: -1 })
       .limit(5)
-      .select("orderId items total status createdAt");
+      .select('orderId items total status createdAt');
 
     // 4. AMC Status (Check UserAmc model FIRST, then Customer fallback)
     let amcStatus = {
@@ -81,11 +82,15 @@ export const getUserDashboardStats = async (req, res) => {
         status: "Inactive"
     };
 
-    // Check for web-purchased UserAmc first
-    const activeUserAmc = await UserAmc.findOne({ 
-        userId: userObjectId, 
-        status: 'Active' 
-    }).sort({ endDate: -1 });
+    // Check for web-purchased UserAmc first (by userId OR phone)
+    const amcQuery = {
+      $or: [
+        { userId: userObjectId },
+        ...(last10 ? [{ customerPhone: { $regex: last10 + '$' } }] : [])
+      ],
+      status: 'Active'
+    };
+    const activeUserAmc = await UserAmc.findOne(amcQuery).sort({ endDate: -1 });
 
     if (activeUserAmc) {
         amcStatus = {
@@ -143,7 +148,12 @@ export const getUserDashboardStats = async (req, res) => {
     }
 
     // Add service history from UserAmc
-    const userAmcs = await UserAmc.find({ userId: userObjectId });
+    const userAmcs = await UserAmc.find({
+      $or: [
+        { userId: userObjectId },
+        ...(last10 ? [{ customerPhone: { $regex: last10 + '$' } }] : [])
+      ]
+    });
     userAmcs.forEach(uamc => {
         if (uamc.serviceHistory && uamc.serviceHistory.length > 0) {
             uamc.serviceHistory.forEach(svc => {

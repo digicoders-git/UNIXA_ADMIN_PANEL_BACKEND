@@ -101,6 +101,17 @@ export const placeOrder = async (req, res) => {
           .status(400)
           .json({ message: `Invalid productId: ${item.productId}` });
       }
+
+      // Stock check (only for Products, not RoParts)
+      if (type === "Product" && itemData.stock !== undefined) {
+        const qty = Number(item.quantity || 1);
+        if (itemData.stock < qty) {
+          return res.status(400).json({
+            message: `"${itemData.name}" is out of stock or has insufficient stock.`
+          });
+        }
+      }
+
       const qty = Number(item.quantity || 1);
 
       // Handle AMC Price addition if applicable so total is correct
@@ -565,6 +576,20 @@ export const getCustomersFromOrders = async (req, res) => {
       }
 
       const customer = customerMap.get(phone);
+
+      // If actual customer has empty address, fill from order's shippingAddress
+      if (customer.actualCustomer) {
+        const addr = customer.address || {};
+        if (!addr.house && !addr.area && !addr.city && !addr.pincode) {
+          customer.address = {
+            house: order.shippingAddress.addressLine1 || '',
+            area: order.shippingAddress.addressLine2 || '',
+            city: order.shippingAddress.city || '',
+            pincode: order.shippingAddress.pincode || '',
+          };
+        }
+      }
+
       customer.orderCount += 1;
       order.items.forEach(item => {
         customer.orderItems.push({
