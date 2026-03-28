@@ -243,17 +243,17 @@ app.listen(PORT, '0.0.0.0', async () => {
   // 🟢 Connect to Database after port binding
   try {
     await connectDB();
-    console.log("⏳ Timezone:", moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A"));
+    // console.log("⏳ Timezone:", moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A"));
 
     // 🔄 Schedule AMC status update job - runs every hour
     cron.schedule('0 * * * *', async () => {
       try {
         const result = await UserAmc.updateExpiredAmcs();
-        if (result.modifiedCount > 0) {
-          console.log(`✅ Updated ${result.modifiedCount} expired AMCs at ${moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A")}`);
-        }
+        // if (result.modifiedCount > 0) {
+        //   console.log(`✅ Updated ${result.modifiedCount} expired AMCs at ${moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A")}`);
+        // }
       } catch (error) {
-        console.error('❌ AMC status update job failed:', error);
+        // console.error('❌ AMC status update job failed:', error);
       }
     });
 
@@ -279,7 +279,7 @@ app.listen(PORT, '0.0.0.0', async () => {
           const employees = await Employee.find({ status: true }).select('name email');
 
           if (employees.length === 0) {
-            console.warn('⚠️ No active employees found for AMC reminder assignment');
+            // console.warn('⚠️ No active employees found for AMC reminder assignment');
             return;
           }
 
@@ -323,20 +323,20 @@ app.listen(PORT, '0.0.0.0', async () => {
             amc.reminderSent = true;
             await amc.save();
 
-            console.log(`✅ AMC reminder #${reminderNumber} ticket created for ${amc.productName}, assigned to ${randomEmployee.name}`);
+            // console.log(`✅ AMC reminder #${reminderNumber} ticket created for ${amc.productName}, assigned to ${randomEmployee.name}`);
           }
 
-          console.log(`✅ Created ${amcsToRemind.length} AMC reminder tickets at ${moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A")}`);
+          // console.log(`✅ Created ${amcsToRemind.length} AMC reminder tickets at ${moment().tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm:ss A")}`);
         }
       } catch (error) {
-        console.error('❌ AMC reminder job failed:', error);
+        // console.error('❌ AMC reminder job failed:', error);
       }
     });
 
-    console.log('🕐 AMC status update job scheduled (runs every hour)');
-    console.log('🕐 AMC 4-month reminder job scheduled (runs daily at midnight)');
+    // console.log('🕐 AMC status update job scheduled (runs every hour)');
+    // console.log('🕐 AMC 4-month reminder job scheduled (runs daily at midnight)');
   } catch (error) {
-    console.error("Startup Database Connection Failed:", error);
+    // console.error("Startup Database Connection Failed:", error);
   }
 });
 

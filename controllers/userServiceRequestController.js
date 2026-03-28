@@ -7,12 +7,32 @@ import UserAmc from "../models/UserAmc.js";
 export const getUserItemsForComplaint = async (req, res) => {
   try {
     const userId = req.user.sub;
+
+    const user = await User.findById(userId).select('phone').lean();
+    const last10 = user?.phone?.replace(/\D/g, '').slice(-10);
+
+    const orderFilter = {
+      status: { $nin: ['cancelled'] },
+      $or: [
+        { userId },
+        ...(last10 ? [
+          { 'shippingAddress.phone': user.phone },
+          { 'shippingAddress.phone': { $regex: last10 + '$' } }
+        ] : [])
+      ]
+    };
+
     const [orders, amcs] = await Promise.all([
-      Order.find({ userId, status: { $nin: ['cancelled'] } })
-        .select('_id items.productName createdAt status')
+      Order.find(orderFilter)
+        .select('_id items.productName items.productImage createdAt status')
         .sort({ createdAt: -1 }).limit(20).lean(),
-      UserAmc.find({ userId, status: 'Active' })
-        .select('_id productName amcPlanName startDate').lean()
+      UserAmc.find({
+        status: 'Active',
+        $or: [
+          { userId },
+          ...(last10 ? [{ customerPhone: { $regex: last10 + '$' } }] : [])
+        ]
+      }).select('_id productName amcPlanName startDate').lean()
     ]);
 
     const items = [

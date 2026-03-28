@@ -9,6 +9,7 @@ import UserAmc from "../models/UserAmc.js";
 import AmcPlan from "../models/AmcPlan.js";
 import Transaction from "../models/Transaction.js";
 import Lead from "../models/Lead.js";
+import InventoryLog from "../models/InventoryLog.js";
 import mongoose from "mongoose";
 
 const applyOffer = (offer, subtotal) => {
@@ -173,6 +174,29 @@ export const placeOrder = async (req, res) => {
       razorpaySignature: razorpay_signature,
       source: source || "online"
     });
+
+    // Deduct stock for Product type items
+    for (const item of itemsForOrder) {
+      if (item.productType !== 'Product') continue;
+      try {
+        const product = await Product.findById(item.product);
+        if (!product) continue;
+        const previousStock = product.stock;
+        const newStock = Math.max(0, previousStock - item.quantity);
+        product.stock = newStock;
+        await product.save();
+        await InventoryLog.create({
+          productId: product._id,
+          change: -(item.quantity),
+          previousStock,
+          newStock,
+          reason: source === 'offline' ? 'Offline Order' : 'Online Order',
+          note: `Order #${order._id.toString().slice(-6).toUpperCase()} - ${item.productName}`
+        });
+      } catch (stockErr) {
+        console.error('Stock deduction error:', stockErr.message);
+      }
+    }
 
     // If offline order is created with delivered status, activate AMC immediately
     if (source === "offline" && (status === "delivered")) {

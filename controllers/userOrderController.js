@@ -6,6 +6,7 @@ import RoPart from "../models/RoPart.js";
 import Offer from "../models/Offer.js";
 import User from "../models/User.js";
 import UserAmc from "../models/UserAmc.js";
+import InventoryLog from "../models/InventoryLog.js";
 
 // Place Order
 export const placeOrder = async (req, res) => {
@@ -111,6 +112,28 @@ export const placeOrder = async (req, res) => {
     cart.totalAmount = 0;
     await cart.save();
 
+    // Deduct stock for each ordered product
+    for (const item of orderItems) {
+      try {
+        const product = await Product.findById(item.product);
+        if (!product) continue;
+        const previousStock = product.stock;
+        const newStock = Math.max(0, previousStock - item.quantity);
+        product.stock = newStock;
+        await product.save();
+        await InventoryLog.create({
+          productId: product._id,
+          change: -(item.quantity),
+          previousStock,
+          newStock,
+          reason: 'Online Order',
+          note: `Order #${order._id.toString().slice(-6).toUpperCase()} - ${item.productName}`
+        });
+      } catch (stockErr) {
+        console.error('Stock deduction error:', stockErr.message);
+      }
+    }
+
     // ========== AUTO-ACTIVATE AMC PLANS & POPULATE ORDER DETAILS ==========
     try {
       console.log('🔄 Starting AMC auto-activation and order enrichment:', order._id);
@@ -212,7 +235,7 @@ export const getUserOrders = async (req, res) => {
     const last10 = user?.phone?.replace(/\D/g, '').slice(-10);
 
     const orConditions = [
-      { userId, source: { $ne: 'offline' } },
+      { userId },
       ...(last10 ? [
         { 'shippingAddress.phone': user.phone },
         { 'shippingAddress.phone': { $regex: last10 + '$' } }
@@ -237,7 +260,7 @@ export const getUserOrders = async (req, res) => {
       ...o,
       items: o.items.map(item => ({
         ...item,
-        productImage: item.productImage || item.product?.mainImage?.url || ''
+        productImage: item.productImage || item.product?.mainImage?.url || item.product?.img || ''
       }))
     }));
 
@@ -276,7 +299,7 @@ export const getOrder = async (req, res) => {
       ...orderDoc,
       items: orderDoc.items.map(item => ({
         ...item,
-        productImage: item.productImage || item.product?.mainImage?.url || ''
+        productImage: item.productImage || item.product?.mainImage?.url || item.product?.img || ''
       }))
     };
 
@@ -308,6 +331,27 @@ export const cancelOrder = async (req, res) => {
     order.status = "cancelled";
     order.cancelledAt = new Date();
     await order.save();
+
+    // Restore stock on cancellation
+    for (const item of order.items) {
+      try {
+        const product = await Product.findById(item.product);
+        if (!product) continue;
+        const previousStock = product.stock;
+        product.stock = previousStock + item.quantity;
+        await product.save();
+        await InventoryLog.create({
+          productId: product._id,
+          change: item.quantity,
+          previousStock,
+          newStock: product.stock,
+          reason: 'Order Cancelled',
+          note: `Order #${order._id.toString().slice(-6).toUpperCase()} cancelled by user`
+        });
+      } catch (stockErr) {
+        console.error('Stock restore error:', stockErr.message);
+      }
+    }
 
     // Also cancel any auto-activated AMCs for this order
     await UserAmc.updateMany(
@@ -342,6 +386,27 @@ export const returnOrder = async (req, res) => {
 
     order.status = "returned";
     await order.save();
+
+    // Restore stock on return
+    for (const item of order.items) {
+      try {
+        const product = await Product.findById(item.product);
+        if (!product) continue;
+        const previousStock = product.stock;
+        product.stock = previousStock + item.quantity;
+        await product.save();
+        await InventoryLog.create({
+          productId: product._id,
+          change: item.quantity,
+          previousStock,
+          newStock: product.stock,
+          reason: 'Order Returned',
+          note: `Order #${order._id.toString().slice(-6).toUpperCase()} returned by user`
+        });
+      } catch (stockErr) {
+        console.error('Stock restore error:', stockErr.message);
+      }
+    }
 
     // Also cancel any auto-activated AMCs for this order if product is returned
     await UserAmc.updateMany(
