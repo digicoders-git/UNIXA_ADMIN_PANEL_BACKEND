@@ -1,5 +1,9 @@
 import Complaint from "../models/Complaint.js";
 import UserNotification from "../models/UserNotification.js";
+import User from "../models/User.js";
+import UserAmc from "../models/UserAmc.js";
+import AssignedTicket from "../models/AssignedTicket.js";
+import mongoose from "mongoose";
 
 export const getAllComplaints = async (req, res) => {
   try {
@@ -71,6 +75,100 @@ export const updateComplaint = async (req, res) => {
   } catch (err) {
     console.error("updateComplaint error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Search users by name or phone for offline complaint
+export const searchUsersForComplaint = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) return res.json([]);
+
+    const regex = new RegExp(q.trim(), 'i');
+    const users = await User.find({
+      $or: [
+        { firstName: regex },
+        { lastName: regex },
+        { phone: regex },
+        { email: regex }
+      ]
+    }).select('_id firstName lastName phone email address city state pincode addresses').limit(10).lean();
+
+    // For each user, fetch their active AMCs
+    const results = await Promise.all(users.map(async (u) => {
+      const amcs = await UserAmc.find({ userId: u._id, status: 'Active' })
+        .select('_id amcId productName amcPlanName status endDate').lean();
+      return { ...u, amcs };
+    }));
+
+    res.json(results);
+  } catch (err) {
+    console.error('searchUsersForComplaint error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Create offline complaint (admin adds on behalf of customer)
+export const createOfflineComplaint = async (req, res) => {
+  try {
+    const {
+      userId, customerName, customerPhone, customerEmail, customerAddress,
+      type, description, priority, relatedItemType, relatedItemId, relatedItemName,
+      expectedResolutionDate,
+      // ticket assignment
+      assignTo, assignedBy, dueDate, ticketNotes
+    } = req.body;
+
+    if (!customerName || !customerPhone || !type || !description) {
+      return res.status(400).json({ message: 'customerName, customerPhone, type, description are required' });
+    }
+
+    // Generate complaint ID
+    const count = await Complaint.countDocuments();
+    const complaintId = `CMP-${String(count + 1).padStart(5, '0')}`;
+
+    const complaint = await Complaint.create({
+      complaintId,
+      userId: userId || new mongoose.Types.ObjectId(),
+      customerName,
+      customerPhone,
+      customerEmail: customerEmail || '',
+      customerAddress: customerAddress || '',
+      type,
+      description,
+      priority: priority || 'Medium',
+      status: assignTo ? 'In Progress' : 'Open',
+      relatedItemType: relatedItemType || 'General',
+      relatedItemId: relatedItemId || '',
+      relatedItemName: relatedItemName || '',
+      resolutionNotes: expectedResolutionDate ? `Expected resolution: ${expectedResolutionDate}` : ''
+    });
+
+    // If employee selected, create ticket immediately
+    if (assignTo) {
+      await AssignedTicket.create({
+        ticketType: 'complaint',
+        complaintId: complaint._id,
+        title: `${type} - ${customerName}`,
+        description,
+        notes: ticketNotes || description,
+        assignedTo: assignTo,
+        assignedBy: assignedBy || 'Admin',
+        priority: priority || 'Medium',
+        dueDate: dueDate || null,
+        status: 'Pending',
+        userId: userId || null,
+        customerName,
+        customerPhone,
+        customerEmail: customerEmail || '',
+        address: customerAddress || 'N/A'
+      });
+    }
+
+    res.status(201).json({ message: 'Offline complaint created successfully', complaint });
+  } catch (err) {
+    console.error('createOfflineComplaint error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
